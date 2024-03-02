@@ -6,8 +6,6 @@ Welcome to Autonomous Driving documentation!
    :caption: Contents:
 
    apidoc/modules.rst
-   userdoc/initial.rst
-
 
 
 Indices and tables
