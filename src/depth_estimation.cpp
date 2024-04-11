@@ -168,8 +168,12 @@ public:
 
 int main() {
     // Read the image files
-    Mat image1 = imread("../data/left01.png");
-    Mat image2 = imread("../data/right01.png");
+    Mat image1 = imread("../data/view1.png");
+    Mat image2 = imread("../data/view5.png");
+    Mat disp = imread("../data/disp1.png");
+
+    // Mat image1 = imread("../data/aloeL.jpg");
+    // Mat image2 = imread("../data/aloeR.jpg");
 
     // Check if the images were successfully loaded
     if (image1.empty() || image2.empty()) {
@@ -212,11 +216,69 @@ int main() {
     Mat leftGray, rightGray;
     cvtColor(image1, leftGray, COLOR_BGR2GRAY);
     cvtColor(image2, rightGray, COLOR_BGR2GRAY);
-    Ptr<StereoBM> stereo = StereoBM::create(16, 11); // Block size and disparity range
+    
+    // float scale=0.5;
+    // resize(leftGray, leftGray, Size(), scale, scale);
+    // resize(rightGray, rightGray, Size(), scale, scale);
+
+
+    // int ndisparities = 16*10;
+    // int SADWindowSize = 15;
+    // Ptr<StereoSGBM> stereo = StereoSGBM::create(5, ndisparities, SADWindowSize); // Block size and disparity range
+    // stereo->setP1(24*SADWindowSize*SADWindowSize);
+    // stereo->setP2(96*SADWindowSize*SADWindowSize);
+    // stereo->setPreFilterCap(63);
+    // stereo->setMode(StereoSGBM::MODE_SGBM);
+
+    Ptr<StereoBM> stereo = StereoBM::create(); // Block size and disparity range
+    stereo->setNumDisparities(304);
+    stereo->setBlockSize(15);
+    stereo->setMinDisparity(5);
+    stereo->setUniquenessRatio(10);  
+    stereo->setTextureThreshold(10);
+    stereo->setSpeckleRange(16);
+    stereo->setSpeckleWindowSize(45);
     Mat disparityMap;
     stereo->compute(leftGray, rightGray, disparityMap);
+    // Mat disparityMap=disp;
+    
     imshow("gray", disparityMap);
     waitKey();
+
+    // Define camera parameters
+    double focalLength = 3740.0;  // Example focal length in pixels
+    double baseline = 160.0;       // Example baseline in millimeters
+
+    // Calculate depth map from disparity map
+    Mat depthMap(disparityMap.size(), CV_32F);
+    for (int y = 0; y < disparityMap.rows; y++) {
+        for (int x = 0; x < disparityMap.cols; x++) {
+            float disparity = disparityMap.at<float>(y, x);
+            if (disparity > 0 && disparity < disparityMap.cols) {
+                float depth = (focalLength * baseline) / (disparity + 270.0);
+                // float depth = disparity;
+                // std::cout << disparity << std::endl;
+                depthMap.at<float>(y, x) = depth;
+            } else {
+                // std::cout << disparity << std::endl;
+                depthMap.at<float>(y, x) = 0;  // Invalid disparity value
+            }
+        }
+    }
+
+    // Compute the minimum and maximum values in the depth map
+    double minVal, maxVal;
+    cv::Point minLoc, maxLoc;
+    cv::minMaxLoc(depthMap, &minVal, &maxVal, &minLoc, &maxLoc);
+
+    // Output the minimum value
+    std::cout << "Minimum depth value: " << minVal << std::endl;
+
+    // cv::normalize(depthMap, depthMap, 0, 1, cv::NORM_MINMAX);
+    // Display the depth map
+    // namedWindow("Depth Map", WINDOW_NORMAL);
+    // imshow("Depth Map", depthMap);
+    // waitKey(0);
 
     return 0;
 }
