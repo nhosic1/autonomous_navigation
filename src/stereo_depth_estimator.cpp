@@ -3,6 +3,8 @@
 #include "message_filters/subscriber.h"
 #include "message_filters/time_synchronizer.h"
 #include <opencv2/opencv.hpp>
+#include <cv_bridge/cv_bridge.hpp>
+#include <filesystem>
 
 class StereoDepthEstimator : public rclcpp::Node
 {
@@ -10,6 +12,7 @@ public:
     StereoDepthEstimator() : Node("stereo_depth_estimator")
     {
         this->declare_parameter("snapshot", false);
+        this->declare_parameter("data_folder", "");
 
         // Create subscribers for left and right stereo image topics
         left_subscriber_.subscribe(this, "/left_camera/image");
@@ -22,14 +25,52 @@ public:
 
 private:
     // Callback function for synchronized left and right stereo images
-    void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img, const sensor_msgs::msg::Image::ConstSharedPtr &right_img)
+    void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr, const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr)
     {
         bool snapshot = this->get_parameter("snapshot").as_bool();
+        cv_bridge::CvImagePtr cv_left_img_ptr;
+        cv_bridge::CvImagePtr cv_right_img_ptr;
 
-        RCLCPP_INFO(this->get_logger(), "Received synchronized stereo images with timestamps: left=%f, right=%f", left_img->header.stamp.sec + left_img->header.stamp.nanosec * 1e-9, right_img->header.stamp.sec + right_img->header.stamp.nanosec * 1e-9);
-        RCLCPP_INFO(this->get_logger(), "Snapshot: %s", snapshot ? "true" : "false");
+        // Convert ROS2 image messages to cv::Mat objects
+        try
+        {
+            cv_left_img_ptr = cv_bridge::toCvCopy(left_img_msg_ptr, sensor_msgs::image_encodings::BGR8);
+            cv_right_img_ptr = cv_bridge::toCvCopy(right_img_msg_ptr, sensor_msgs::image_encodings::BGR8);
+        }
+        catch(cv_bridge::Exception& e)
+        {
+            RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
+            return;
+        }
 
-        this->set_parameter(rclcpp::Parameter("snapshot", false));
+        cv::Mat left_img = cv_left_img_ptr->image;
+        cv::Mat right_img = cv_right_img_ptr->image;
+
+        if (snapshot==true)
+        {
+            std::string data_folder_path = this->get_parameter("data_folder").as_string();
+            if (data_folder_path.empty())
+            {
+                RCLCPP_WARN(this->get_logger(), "Saving snapshots failed. Parameter 'data_folder' is not provided.");
+            }
+
+            else if (std::filesystem::path(data_folder_path).is_absolute() && std::filesystem::is_directory(data_folder_path))
+            {
+                std::string left_img_path = data_folder_path + "/left_img_" + std::to_string(left_img_msg_ptr->header.stamp.sec) + "_" + std::to_string(left_img_msg_ptr->header.stamp.nanosec) + ".png";
+                std::string right_img_path = data_folder_path + "/right_img_" + std::to_string(right_img_msg_ptr->header.stamp.sec) + "_" + std::to_string(right_img_msg_ptr->header.stamp.nanosec) + ".png";
+
+                // Save images in PNG
+                cv::imwrite(left_img_path, left_img);
+                cv::imwrite(right_img_path, right_img);
+
+                RCLCPP_INFO(this->get_logger(), "Stereo images %s and %s saved in %s", std::filesystem::path(left_img_path).filename().c_str(), std::filesystem::path(right_img_path).filename().c_str(), data_folder_path.c_str());
+            }
+            else 
+            {
+                RCLCPP_WARN(this->get_logger(), "Saving snapshots failed. Path to data folder is invalid.");
+            }
+            this->set_parameter(rclcpp::Parameter("snapshot", false));
+        }
     }
 
     // Subscription objects for left and right stereo images

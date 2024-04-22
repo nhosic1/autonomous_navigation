@@ -2,4 +2,5 @@
 /docs/build
 docs/source/apidoc/
 /.vscode
+/data
 __pycache__
