@@ -5,6 +5,7 @@
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.hpp>
 #include <filesystem>
+#include <cmath>
 
 class StereoDepthEstimator : public rclcpp::Node
 {
@@ -46,6 +47,65 @@ private:
         cv::Mat left_img = cv_left_img_ptr->image;
         cv::Mat right_img = cv_right_img_ptr->image;
 
+        cv::Mat left_gray, right_gray;
+        cv::cvtColor(left_img, left_gray, cv::COLOR_BGR2GRAY);
+        cv::cvtColor(right_img, right_gray, cv::COLOR_BGR2GRAY);
+
+        cv::Ptr<cv::StereoBM> stereo = cv::StereoBM::create();
+        stereo->setNumDisparities(176);
+        stereo->setBlockSize(15);
+        stereo->setMinDisparity(3);
+        stereo->setUniquenessRatio(15);  
+        stereo->setTextureThreshold(25);
+        stereo->setSpeckleRange(3);
+        stereo->setSpeckleWindowSize(600);
+        cv::Mat disparity_map;
+        stereo->compute(left_gray, right_gray, disparity_map); // Data type of disparity_map is CV_16SC1
+
+        // Scale the disparity map and convert it to CV_8UC1
+        int disparity_search_range = 173;
+        cv::Mat scaled_disparity_map;
+        cv::convertScaleAbs(disparity_map, scaled_disparity_map, 255.0 / (disparity_search_range * 16.0));
+
+        // Apply a color map to the scaled disparity map (red for closer objects, blue for farther objects)
+        cv::Mat colored_disparity_map;
+        cv::applyColorMap(scaled_disparity_map, colored_disparity_map, cv::COLORMAP_JET);
+
+        cv::Mat resized_colored_disparity_map;
+        int max_image_width = 600;
+        float scale = static_cast<float>(max_image_width) / colored_disparity_map.cols;
+        cv::resize(colored_disparity_map, resized_colored_disparity_map, cv::Size(), scale, scale);
+
+        // Display the colored disparity map
+        cv::imshow("Disparity Map", resized_colored_disparity_map);
+        cv::waitKey(1);  // Wait for a key press (1 millisecond)
+
+        // Define camera parameters
+        int image_width = left_img.cols;
+        double horizontal_fov = 1.1519; 
+        double focal_length_px = image_width / (2 * tan(horizontal_fov / 2)); // From camera matrix: 985.5322265625
+        double baseline = 180.0;
+
+        // Calculate depth map from disparity map
+        cv::Mat depth_map(disparity_map.size(), CV_32F);
+        for (int y = 0; y < disparity_map.rows; y++)
+        {
+            for (int x = 0; x < disparity_map.cols; x++)
+            {
+                int16_t disparity_scaled = disparity_map.at<int16_t>(y, x);
+                float disparity = disparity_scaled / 16.0f; 
+                if (disparity > 0)
+                {
+                    float depth = (focal_length_px * baseline) / (disparity);
+                    depth_map.at<float>(y, x) = depth;
+                }
+                else
+                {
+                    depth_map.at<float>(y, x) = 0; // Invalid disparity value
+                }
+            }
+        }
+
         if (snapshot==true)
         {
             std::string data_folder_path = this->get_parameter("data_folder").as_string();
@@ -83,6 +143,9 @@ private:
 
 int main(int argc, char **argv)
 {
+    // Create a named window for visualization
+    cv::namedWindow("Disparity Map", cv::WINDOW_AUTOSIZE);
+
     // Initialize ROS 2 node
     rclcpp::init(argc, argv);
     auto node = std::make_shared<StereoDepthEstimator>();
@@ -92,5 +155,9 @@ int main(int argc, char **argv)
 
     // Shutdown ROS 2 node
     rclcpp::shutdown();
+
+    // Destroy the window when the node exits
+    cv::destroyWindow("Disparity Map");
+
     return 0;
 }
