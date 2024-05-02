@@ -1,7 +1,8 @@
-#include "rclcpp/rclcpp.hpp"
-#include "sensor_msgs/msg/image.hpp"
-#include "message_filters/subscriber.h"
-#include "message_filters/time_synchronizer.h"
+#include <rclcpp/rclcpp.hpp>
+#include <builtin_interfaces/msg/time.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.hpp>
 #include <filesystem>
@@ -38,7 +39,7 @@ private:
             cv_left_img_ptr = cv_bridge::toCvCopy(left_img_msg_ptr, sensor_msgs::image_encodings::BGR8);
             cv_right_img_ptr = cv_bridge::toCvCopy(right_img_msg_ptr, sensor_msgs::image_encodings::BGR8);
         }
-        catch(cv_bridge::Exception& e)
+        catch (cv_bridge::Exception &e)
         {
             RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
             return;
@@ -47,6 +48,45 @@ private:
         cv::Mat left_img = cv_left_img_ptr->image;
         cv::Mat right_img = cv_right_img_ptr->image;
 
+        cv::Mat disparity_map = compute_disparity_map(left_img, right_img);
+        visualize_disparity_map(disparity_map);
+
+        cv::Mat depth_map = compute_depth_map(disparity_map);
+
+        if (snapshot == true)
+        {
+            save_snapshots(left_img, right_img, left_img_msg_ptr->header.stamp);
+        }
+    }
+
+    void save_snapshots(const cv::Mat &left_img, const cv::Mat &right_img, const builtin_interfaces::msg::Time &timestamp)
+    {
+        std::string data_folder_path = this->get_parameter("data_folder").as_string();
+        if (data_folder_path.empty())
+        {
+            RCLCPP_WARN(this->get_logger(), "Saving snapshots failed. Parameter 'data_folder' is not provided.");
+        }
+        else if (std::filesystem::path(data_folder_path).is_absolute() && std::filesystem::is_directory(data_folder_path))
+        {
+            std::string timestamp_str = std::to_string(timestamp.sec) + "_" + std::to_string(timestamp.nanosec);
+            std::string left_img_path = data_folder_path + "/left_img_" + timestamp_str + ".png";
+            std::string right_img_path = data_folder_path + "/right_img_" + timestamp_str + ".png";
+
+            // Save images in PNG format
+            cv::imwrite(left_img_path, left_img);
+            cv::imwrite(right_img_path, right_img);
+
+            RCLCPP_INFO(this->get_logger(), "Stereo images %s and %s saved in %s", std::filesystem::path(left_img_path).filename().c_str(), std::filesystem::path(right_img_path).filename().c_str(), data_folder_path.c_str());
+        }
+        else
+        {
+            RCLCPP_WARN(this->get_logger(), "Saving snapshots failed. Path to data folder is invalid.");
+        }
+        this->set_parameter(rclcpp::Parameter("snapshot", false));
+    }
+
+    cv::Mat compute_disparity_map(const cv::Mat &left_img, const cv::Mat &right_img)
+    {
         cv::Mat left_gray, right_gray;
         cv::cvtColor(left_img, left_gray, cv::COLOR_BGR2GRAY);
         cv::cvtColor(right_img, right_gray, cv::COLOR_BGR2GRAY);
@@ -55,45 +95,32 @@ private:
         stereo->setNumDisparities(176);
         stereo->setBlockSize(15);
         stereo->setMinDisparity(3);
-        stereo->setUniquenessRatio(15);  
+        stereo->setUniquenessRatio(15);
         stereo->setTextureThreshold(25);
         stereo->setSpeckleRange(3);
         stereo->setSpeckleWindowSize(600);
         cv::Mat disparity_map;
-        stereo->compute(left_gray, right_gray, disparity_map); // Data type of disparity_map is CV_16SC1
+        stereo->compute(left_gray, right_gray, disparity_map);
 
-        // Scale the disparity map and convert it to CV_8UC1
-        int disparity_search_range = 173;
-        cv::Mat scaled_disparity_map;
-        cv::convertScaleAbs(disparity_map, scaled_disparity_map, 255.0 / (disparity_search_range * 16.0));
+        return disparity_map; // Data type of disparity_map is CV_16SC1
+    }
 
-        // Apply a color map to the scaled disparity map (red for closer objects, blue for farther objects)
-        cv::Mat colored_disparity_map;
-        cv::applyColorMap(scaled_disparity_map, colored_disparity_map, cv::COLORMAP_JET);
-
-        cv::Mat resized_colored_disparity_map;
-        int max_image_width = 600;
-        float scale = static_cast<float>(max_image_width) / colored_disparity_map.cols;
-        cv::resize(colored_disparity_map, resized_colored_disparity_map, cv::Size(), scale, scale);
-
-        // Display the colored disparity map
-        cv::imshow("Disparity Map", resized_colored_disparity_map);
-        cv::waitKey(1);  // Wait for a key press (1 millisecond)
-
+    cv::Mat compute_depth_map(const cv::Mat &disparity_map)
+    {
         // Define camera parameters
-        int image_width = left_img.cols;
-        double horizontal_fov = 1.1519; 
+        int image_width = 1280;
+        double horizontal_fov = 1.1519;
         double focal_length_px = image_width / (2 * tan(horizontal_fov / 2)); // From camera matrix: 985.5322265625
         double baseline = 180.0;
 
-        // Calculate depth map from disparity map
+        // Compute depth map from disparity map
         cv::Mat depth_map(disparity_map.size(), CV_32F);
         for (int y = 0; y < disparity_map.rows; y++)
         {
             for (int x = 0; x < disparity_map.cols; x++)
             {
                 int16_t disparity_scaled = disparity_map.at<int16_t>(y, x);
-                float disparity = disparity_scaled / 16.0f; 
+                float disparity = disparity_scaled / 16.0f;
                 if (disparity > 0)
                 {
                     float depth = (focal_length_px * baseline) / (disparity);
@@ -106,31 +133,28 @@ private:
             }
         }
 
-        if (snapshot==true)
-        {
-            std::string data_folder_path = this->get_parameter("data_folder").as_string();
-            if (data_folder_path.empty())
-            {
-                RCLCPP_WARN(this->get_logger(), "Saving snapshots failed. Parameter 'data_folder' is not provided.");
-            }
+        return depth_map;
+    }
 
-            else if (std::filesystem::path(data_folder_path).is_absolute() && std::filesystem::is_directory(data_folder_path))
-            {
-                std::string left_img_path = data_folder_path + "/left_img_" + std::to_string(left_img_msg_ptr->header.stamp.sec) + "_" + std::to_string(left_img_msg_ptr->header.stamp.nanosec) + ".png";
-                std::string right_img_path = data_folder_path + "/right_img_" + std::to_string(right_img_msg_ptr->header.stamp.sec) + "_" + std::to_string(right_img_msg_ptr->header.stamp.nanosec) + ".png";
+    // Expects disparity_map data type to be CV_16SC1
+    void visualize_disparity_map(const cv::Mat &disparity_map, const int &range = 176)
+    {
+        // Scale the disparity map and convert it to CV_8UC1
+        cv::Mat scaled_disparity_map;
+        cv::convertScaleAbs(disparity_map, scaled_disparity_map, 255.0 / (range * 16.0));
 
-                // Save images in PNG
-                cv::imwrite(left_img_path, left_img);
-                cv::imwrite(right_img_path, right_img);
+        // Apply a color map to the scaled disparity map (red for closer objects, blue for farther objects)
+        cv::Mat colored_disparity_map;
+        cv::applyColorMap(scaled_disparity_map, colored_disparity_map, cv::COLORMAP_JET);
 
-                RCLCPP_INFO(this->get_logger(), "Stereo images %s and %s saved in %s", std::filesystem::path(left_img_path).filename().c_str(), std::filesystem::path(right_img_path).filename().c_str(), data_folder_path.c_str());
-            }
-            else 
-            {
-                RCLCPP_WARN(this->get_logger(), "Saving snapshots failed. Path to data folder is invalid.");
-            }
-            this->set_parameter(rclcpp::Parameter("snapshot", false));
-        }
+        cv::Mat resized_colored_disparity_map;
+        int max_image_width = 600;
+        float scale = static_cast<float>(max_image_width) / colored_disparity_map.cols;
+        cv::resize(colored_disparity_map, resized_colored_disparity_map, cv::Size(), scale, scale);
+
+        // Display the colored disparity map
+        cv::imshow("Disparity Map", resized_colored_disparity_map);
+        cv::waitKey(1); // Wait for a key press (1 millisecond)
     }
 
     // Subscription objects for left and right stereo images
