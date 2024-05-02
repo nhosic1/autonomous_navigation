@@ -137,11 +137,11 @@ private:
     }
 
     // Expects disparity_map data type to be CV_16SC1
-    void visualize_disparity_map(const cv::Mat &disparity_map, const int &range = 176)
+    void visualize_disparity_map(const cv::Mat &disparity_map, const int &max_disparity = 176)
     {
         // Scale the disparity map and convert it to CV_8UC1
         cv::Mat scaled_disparity_map;
-        cv::convertScaleAbs(disparity_map, scaled_disparity_map, 255.0 / (range * 16.0));
+        cv::convertScaleAbs(disparity_map, scaled_disparity_map, 255.0 / (max_disparity * 16.0));
 
         // Apply a color map to the scaled disparity map (red for closer objects, blue for farther objects)
         cv::Mat colored_disparity_map;
