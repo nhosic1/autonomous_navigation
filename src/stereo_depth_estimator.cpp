@@ -105,6 +105,27 @@ private:
         return disparity_map; // Data type of disparity_map is CV_16SC1
     }
 
+    // Expects disparity_map data type to be CV_16SC1
+    void visualize_disparity_map(const cv::Mat &disparity_map, const int &max_disparity = 176)
+    {
+        // Scale the disparity map and convert it to CV_8UC1
+        cv::Mat scaled_disparity_map;
+        cv::convertScaleAbs(disparity_map, scaled_disparity_map, 255.0 / (max_disparity * 16.0));
+
+        // Apply a color map to the scaled disparity map (red for closer objects, blue for farther objects)
+        cv::Mat colored_disparity_map;
+        cv::applyColorMap(scaled_disparity_map, colored_disparity_map, cv::COLORMAP_JET);
+
+        cv::Mat resized_colored_disparity_map;
+        int max_image_width = 600;
+        float scale = static_cast<float>(max_image_width) / colored_disparity_map.cols;
+        cv::resize(colored_disparity_map, resized_colored_disparity_map, cv::Size(), scale, scale);
+
+        // Display the colored disparity map
+        cv::imshow("Disparity Map", resized_colored_disparity_map);
+        cv::waitKey(1); // Wait for a key press (1 millisecond)
+    }
+
     cv::Mat compute_depth_map(const cv::Mat &disparity_map)
     {
         // Define camera parameters
@@ -134,27 +155,6 @@ private:
         }
 
         return depth_map;
-    }
-
-    // Expects disparity_map data type to be CV_16SC1
-    void visualize_disparity_map(const cv::Mat &disparity_map, const int &max_disparity = 176)
-    {
-        // Scale the disparity map and convert it to CV_8UC1
-        cv::Mat scaled_disparity_map;
-        cv::convertScaleAbs(disparity_map, scaled_disparity_map, 255.0 / (max_disparity * 16.0));
-
-        // Apply a color map to the scaled disparity map (red for closer objects, blue for farther objects)
-        cv::Mat colored_disparity_map;
-        cv::applyColorMap(scaled_disparity_map, colored_disparity_map, cv::COLORMAP_JET);
-
-        cv::Mat resized_colored_disparity_map;
-        int max_image_width = 600;
-        float scale = static_cast<float>(max_image_width) / colored_disparity_map.cols;
-        cv::resize(colored_disparity_map, resized_colored_disparity_map, cv::Size(), scale, scale);
-
-        // Display the colored disparity map
-        cv::imshow("Disparity Map", resized_colored_disparity_map);
-        cv::waitKey(1); // Wait for a key press (1 millisecond)
     }
 
     // Subscription objects for left and right stereo images
