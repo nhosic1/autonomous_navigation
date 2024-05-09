@@ -1,4 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <message_filters/subscriber.h>
@@ -29,7 +30,12 @@ private:
     // Callback function for synchronized left and right stereo images
     void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr, const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr)
     {
-        bool snapshot = this->get_parameter("snapshot").as_bool();
+        std::string package_name = "autonomous_driving";
+        std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
+        std::string camera_params_path = package_share_directory + "/config/sim_camera_params.yaml";
+        cv::Mat camera_matrix, dist_coeffs;
+        loadCameraParameters(camera_params_path, camera_matrix, dist_coeffs);
+
         cv_bridge::CvImagePtr cv_left_img_ptr;
         cv_bridge::CvImagePtr cv_right_img_ptr;
 
@@ -49,10 +55,19 @@ private:
         cv::Mat right_img = cv_right_img_ptr->image;
 
         cv::Mat disparity_map = compute_disparity_map(left_img, right_img);
-        visualize_disparity_map(disparity_map);
 
-        cv::Mat depth_map = compute_depth_map(disparity_map);
+        std::vector<cv::Point3f> points_3D = compute_3D_points(disparity_map, camera_matrix);
+        cv::Point3f closest_point(0.0f, 0.0f, std::numeric_limits<float>::max());
+        check_obstacles(points_3D, closest_point);
 
+        std::vector<cv::Point2f> points2D;
+        std::vector<cv::Point3f> points3D;
+        points3D.push_back(closest_point);
+        cv::projectPoints(points3D, cv::Mat::zeros(3, 1, CV_64F), cv::Mat::zeros(3, 1, CV_64F), camera_matrix, dist_coeffs, points2D);
+
+        visualize_disparity_map(disparity_map, cv::Point2i(static_cast<int>(points2D[0].x), static_cast<int>(points2D[0].y)), closest_point);
+
+        bool snapshot = this->get_parameter("snapshot").as_bool();
         if (snapshot == true)
         {
             save_snapshots(left_img, right_img, left_img_msg_ptr->header.stamp);
@@ -106,7 +121,7 @@ private:
     }
 
     // Expects disparity_map data type to be CV_16SC1
-    void visualize_disparity_map(const cv::Mat &disparity_map, const int &max_disparity = 176)
+    void visualize_disparity_map(const cv::Mat &disparity_map, const cv::Point2i &closest_point_2D, const cv::Point3f &closest_point_3D, const int &max_disparity = 176)
     {
         // Scale the disparity map and convert it to CV_8UC1
         cv::Mat scaled_disparity_map;
@@ -116,8 +131,34 @@ private:
         cv::Mat colored_disparity_map;
         cv::applyColorMap(scaled_disparity_map, colored_disparity_map, cv::COLORMAP_JET);
 
+        if (closest_point_3D.z < 10000)
+        {
+            cv::circle(colored_disparity_map, closest_point_2D, 10, cv::Scalar(255, 0, 255), -1);
+
+            // Convert points to from [mm] to [m] and set precision to 2 decimal places for text output
+            std::stringstream ss_x, ss_y, ss_z;
+            ss_x << std::fixed << std::setprecision(2) << closest_point_3D.x / 1000.0;
+            ss_y << std::fixed << std::setprecision(2) << closest_point_3D.y / 1000.0;
+            ss_z << std::fixed << std::setprecision(2) << closest_point_3D.z / 1000.0;
+
+            std::string text = "(" + ss_x.str() + ", " + ss_y.str() + ", " + ss_z.str() + ")";
+
+            // Define the font parameters for the point text
+            int fontFace = cv::FONT_HERSHEY_SIMPLEX; // Font type
+            double fontScale = 1.1; // Font scale factor
+            cv::Scalar color(255, 0, 255); // Text color (BGR format)
+            int thickness = 3; // Thickness of the text
+
+            // Calculate the size of the text bounding box
+            int baseline = 0;
+            cv::Size textSize = cv::getTextSize(text, fontFace, fontScale, thickness, &baseline);
+            cv::Point org(closest_point_2D.x - textSize.width / 2, closest_point_2D.y + textSize.height + 25); // Position of the text (below the reprojected point)
+
+            cv::putText(colored_disparity_map, text, org, fontFace, fontScale, color, thickness);
+        }
+
         cv::Mat resized_colored_disparity_map;
-        int max_image_width = 600;
+        int max_image_width = 800;
         float scale = static_cast<float>(max_image_width) / colored_disparity_map.cols;
         cv::resize(colored_disparity_map, resized_colored_disparity_map, cv::Size(), scale, scale);
 
@@ -126,16 +167,16 @@ private:
         cv::waitKey(1); // Wait for a key press (1 millisecond)
     }
 
-    cv::Mat compute_depth_map(const cv::Mat &disparity_map)
+    std::vector<cv::Point3f> compute_3D_points(const cv::Mat &disparity_map, const cv::Mat &camera_matrix)
     {
-        // Define camera parameters
-        int image_width = 1280;
-        double horizontal_fov = 1.1519;
-        double focal_length_px = image_width / (2 * tan(horizontal_fov / 2)); // From camera matrix: 985.5322265625
-        double baseline = 180.0;
+        float fx = camera_matrix.at<double>(0, 0); // unit: [mm]
+        float fy = camera_matrix.at<double>(1, 1); // unit: [mm]
+        float cx = camera_matrix.at<double>(0, 2); // unit: [px]
+        float cy = camera_matrix.at<double>(1, 2); // unit: [px]
+        float baseline = 180.0; // unit: [mm]
 
-        // Compute depth map from disparity map
-        cv::Mat depth_map(disparity_map.size(), CV_32F);
+        // Compute 3D points from disparity map
+        std::vector<cv::Point3f> points_3D;
         for (int y = 0; y < disparity_map.rows; y++)
         {
             for (int x = 0; x < disparity_map.cols; x++)
@@ -144,17 +185,74 @@ private:
                 float disparity = disparity_scaled / 16.0f;
                 if (disparity > 0)
                 {
-                    float depth = (focal_length_px * baseline) / (disparity);
-                    depth_map.at<float>(y, x) = depth;
-                }
-                else
-                {
-                    depth_map.at<float>(y, x) = 0; // Invalid disparity value
+                    // Calculate 3D point (X, Y, Z) using the disparity and camera parameters
+                    // 3D points are  represented in the left camera coordinate system.
+                    float Z = (fx * baseline) / disparity;
+                    float X = (x - cx) * Z / fx;
+                    float Y = (y - cy) * Z / fy;
+
+                    // Set the 3D point in the points_3D matrix
+                    points_3D.push_back(cv::Point3f(X, Y, Z));
                 }
             }
         }
 
-        return depth_map;
+        return points_3D; // unit: [mm]
+    }
+
+    void check_obstacles(const std::vector<cv::Point3f> &points, cv::Point3f &closest_point)
+    {
+        // Define parameters (unit: [mm])
+        float max_depth = 2000.0;
+        float robot_width = 1300.0;
+        float camera_height = 575.0;
+        float x_offset_compensation = 90.0;  // Compensate for the left camera's x-axis offset from the robot's center, which is half of the stereo baseline
+        float side_safety_margin = 250.0;
+        float top_safety_margin = 400.0;
+        float ground_tolerance = 50;
+
+        // Initialize variables to track the closest point
+        float closest_z = std::numeric_limits<float>::max();  // Initialize with a large value
+        // cv::Point3f closest_point;
+
+        for (const auto &point : points)
+        {
+            // // Check if the point is in the robot's way
+            // if (point.z <= max_depth && std::abs(point.x + x_offset_compensation) <= (robot_width / 2) + side_safety_margin && point.y > -top_safety_margin && point.y < camera_height)
+            // {
+            //     // Update closest point if the current point has a closer Z coordinate
+            //     if (point.z < closest_z)
+            //     {
+            //         closest_z = point.z;
+            //         closest_point = point;
+            //     }
+            // }
+            if (point.z < closest_z && point.y + ground_tolerance < camera_height)
+                {
+                    closest_z = point.z;
+                    closest_point = point;
+                }
+        }
+    }
+
+    void loadCameraParameters(const std::string &file_path, cv::Mat &camera_matrix, cv::Mat &dist_coeffs)
+    {
+        cv::FileStorage fs(file_path, cv::FileStorage::READ);
+        if (!fs.isOpened())
+        {
+            std::cerr << "Failed to open YAML file: " << file_path << std::endl;
+            return;
+        }
+
+        // Load camera matrix
+        fs["camera_matrix"] >> camera_matrix;
+        camera_matrix.convertTo(camera_matrix, CV_64F);
+
+        // Load distortion coefficients
+        fs["dist_coeffs"] >> dist_coeffs;
+        dist_coeffs.convertTo(dist_coeffs, CV_64F);
+
+        fs.release();
     }
 
     // Subscription objects for left and right stereo images
