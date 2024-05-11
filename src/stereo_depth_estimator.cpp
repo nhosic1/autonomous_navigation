@@ -58,7 +58,7 @@ private:
 
         std::vector<cv::Point3f> points_3D = compute_3D_points(disparity_map, camera_matrix);
         cv::Point3f closest_point(0.0f, 0.0f, std::numeric_limits<float>::max());
-        check_obstacles(points_3D, closest_point);
+        find_closest_point(points_3D, closest_point);
 
         std::vector<cv::Point2f> points2D;
         std::vector<cv::Point3f> points3D;
@@ -145,9 +145,9 @@ private:
 
             // Define the font parameters for the point text
             int fontFace = cv::FONT_HERSHEY_SIMPLEX; // Font type
-            double fontScale = 1.1; // Font scale factor
-            cv::Scalar color(255, 0, 255); // Text color (BGR format)
-            int thickness = 3; // Thickness of the text
+            double fontScale = 1.1;                  // Font scale factor
+            cv::Scalar color(255, 0, 255);           // Text color (BGR format)
+            int thickness = 3;                       // Thickness of the text
 
             // Calculate the size of the text bounding box
             int baseline = 0;
@@ -173,7 +173,7 @@ private:
         float fy = camera_matrix.at<double>(1, 1); // unit: [mm]
         float cx = camera_matrix.at<double>(0, 2); // unit: [px]
         float cy = camera_matrix.at<double>(1, 2); // unit: [px]
-        float baseline = 180.0; // unit: [mm]
+        float baseline = 180.0;                    // unit: [mm]
 
         // Compute 3D points from disparity map
         std::vector<cv::Point3f> points_3D;
@@ -200,38 +200,46 @@ private:
         return points_3D; // unit: [mm]
     }
 
-    void check_obstacles(const std::vector<cv::Point3f> &points, cv::Point3f &closest_point)
+    bool is_path_safe(const std::vector<cv::Point3f> &points, const float &max_depth = 2000)
     {
         // Define parameters (unit: [mm])
-        float max_depth = 2000.0;
         float robot_width = 1300.0;
         float camera_height = 575.0;
-        float x_offset_compensation = 90.0;  // Compensate for the left camera's x-axis offset from the robot's center, which is half of the stereo baseline
+        float x_offset_compensation = 90.0; // Compensate for the left camera's x-axis offset from the robot's center, which is half of the stereo baseline
         float side_safety_margin = 250.0;
         float top_safety_margin = 400.0;
         float ground_tolerance = 50;
 
+        for (const auto &point : points)
+        {
+            // Check if the point is in the robot's way
+            if (point.z <= max_depth &&
+                std::abs(point.x + x_offset_compensation) <= (robot_width / 2) + side_safety_margin &&
+                point.y > -top_safety_margin &&
+                point.y + ground_tolerance < camera_height)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void find_closest_point(const std::vector<cv::Point3f> &points, cv::Point3f &closest_point)
+    {
+        // Define parameters (unit: [mm])
+        float camera_height = 575.0;
+        float ground_tolerance = 50;
+
         // Initialize variables to track the closest point
-        float closest_z = std::numeric_limits<float>::max();  // Initialize with a large value
-        // cv::Point3f closest_point;
+        float closest_z = std::numeric_limits<float>::max(); // Initialize with a large value
 
         for (const auto &point : points)
         {
-            // // Check if the point is in the robot's way
-            // if (point.z <= max_depth && std::abs(point.x + x_offset_compensation) <= (robot_width / 2) + side_safety_margin && point.y > -top_safety_margin && point.y < camera_height)
-            // {
-            //     // Update closest point if the current point has a closer Z coordinate
-            //     if (point.z < closest_z)
-            //     {
-            //         closest_z = point.z;
-            //         closest_point = point;
-            //     }
-            // }
             if (point.z < closest_z && point.y + ground_tolerance < camera_height)
-                {
-                    closest_z = point.z;
-                    closest_point = point;
-                }
+            {
+                closest_z = point.z;
+                closest_point = point;
+            }
         }
     }
 
