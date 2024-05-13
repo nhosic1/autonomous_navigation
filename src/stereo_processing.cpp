@@ -1,10 +1,63 @@
 #include <opencv2/opencv.hpp>
 #include <filesystem>
 #include <cmath>
+#include <opencv2/ximgproc.hpp>
 #include "autonomous_driving/stereo_processing.hpp"
 
 namespace sp
 {
+
+void filter_speckles(cv::Mat &disparity_map, const int &speckle_threshold, const int &max_speckle_size, const int &replacement_disparity)
+{
+    // Apply thresholding to find speckles
+    cv::Mat thresholded_map;
+    cv::threshold(disparity_map, thresholded_map, speckle_threshold * 16, 255, cv::THRESH_BINARY);
+
+    thresholded_map.convertTo(thresholded_map, CV_8UC1);
+
+    // Find connected components
+    cv::Mat labels, stats, centroids;
+    int num_labels = cv::connectedComponentsWithStats(thresholded_map, labels, stats, centroids);
+
+    // Filter out small components (speckles)
+    for (int i = 1; i < num_labels; ++i) {
+        int area = stats.at<int>(i, cv::CC_STAT_AREA);
+        if (area < max_speckle_size) {
+            cv::Mat mask = (labels == i);
+            disparity_map.setTo(replacement_disparity * 16, mask);
+        }
+    }
+}
+
+void filter_invalid_disparities(cv::Mat &disparity_map, const int &min_disparity)
+{
+    // Create a mask to filter out negative disparities
+    cv::Mat mask = (disparity_map < min_disparity * 16);
+    int replacement_disparity = 0;
+    if (min_disparity > 0)
+    {
+        replacement_disparity = min_disparity - 1;
+    }
+
+    // Apply the mask to the disparity map
+    disparity_map.setTo(replacement_disparity * 16, mask);
+}
+
+cv::Ptr<cv::StereoBM> create_default_stereo_matcher()
+{
+    cv::Ptr<cv::StereoBM> matcher = cv::StereoBM::create();
+    matcher->setNumDisparities(176);
+    matcher->setBlockSize(15);
+    matcher->setMinDisparity(3);
+    matcher->setUniquenessRatio(13);
+    matcher->setTextureThreshold(50);
+    matcher->setSpeckleRange(3);
+    matcher->setSpeckleWindowSize(600);
+    matcher->setPreFilterSize(9);
+    matcher->setPreFilterCap(31);
+
+    return matcher;
+}
 
 cv::Mat compute_disparity_map(const cv::Mat &left_img, const cv::Mat &right_img)
 {
@@ -12,18 +65,42 @@ cv::Mat compute_disparity_map(const cv::Mat &left_img, const cv::Mat &right_img)
     cv::cvtColor(left_img, left_gray, cv::COLOR_BGR2GRAY);
     cv::cvtColor(right_img, right_gray, cv::COLOR_BGR2GRAY);
 
-    cv::Ptr<cv::StereoBM> stereo = cv::StereoBM::create();
-    stereo->setNumDisparities(176);
-    stereo->setBlockSize(15);
-    stereo->setMinDisparity(3);
-    stereo->setUniquenessRatio(15);
-    stereo->setTextureThreshold(25);
-    stereo->setSpeckleRange(3);
-    stereo->setSpeckleWindowSize(600);
+    cv::Ptr<cv::StereoBM> matcher = sp::create_default_stereo_matcher();
+
     cv::Mat disparity_map;
-    stereo->compute(left_gray, right_gray, disparity_map);
+    matcher->compute(left_gray, right_gray, disparity_map);
+
+    // Apply filters
+    sp::filter_speckles(disparity_map, 90, 3000, 3);
+    sp::filter_invalid_disparities(disparity_map, 3);
+    cv::medianBlur(disparity_map, disparity_map, 5);
 
     return disparity_map; // Data type of disparity_map is CV_16SC1
+}
+
+cv::Mat compute_disparity_map_wls(const cv::Mat &left_img, const cv::Mat &right_img)
+{
+    cv::Mat left_gray, right_gray;
+    cv::cvtColor(left_img, left_gray, cv::COLOR_BGR2GRAY);
+    cv::cvtColor(right_img, right_gray, cv::COLOR_BGR2GRAY);
+
+    cv::Ptr<cv::StereoBM> left_matcher = sp::create_default_stereo_matcher();
+    cv::Ptr<cv::StereoMatcher> right_matcher = cv::ximgproc::createRightMatcher(left_matcher);
+
+    cv::Mat left_disparity_map, right_disparity_map, filtered_disparity_map;
+    left_matcher->compute(left_gray, right_gray, left_disparity_map);
+    right_matcher->compute(right_gray, left_gray, right_disparity_map);
+
+    cv::Ptr<cv::ximgproc::DisparityWLSFilter> wls_filter;
+    wls_filter = cv::ximgproc::createDisparityWLSFilter(left_matcher);
+    wls_filter->setLambda(8000.0);
+    wls_filter->setSigmaColor(1.9);
+    wls_filter->setDepthDiscontinuityRadius(5);
+    wls_filter->filter(left_disparity_map, left_img, filtered_disparity_map, right_disparity_map);
+
+    sp::filter_invalid_disparities(filtered_disparity_map, 3);
+
+    return filtered_disparity_map; // Data type of disparity_map is CV_16SC1
 }
 
 // Expects disparity_map data type to be CV_16SC1
