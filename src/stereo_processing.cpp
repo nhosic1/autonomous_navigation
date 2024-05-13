@@ -47,13 +47,32 @@ cv::Ptr<cv::StereoBM> create_default_stereo_matcher()
 {
     cv::Ptr<cv::StereoBM> matcher = cv::StereoBM::create();
     matcher->setNumDisparities(176);
-    matcher->setBlockSize(15);
+    matcher->setBlockSize(11);
     matcher->setMinDisparity(3);
-    matcher->setUniquenessRatio(13);
+    matcher->setUniquenessRatio(30);
     matcher->setTextureThreshold(50);
     matcher->setSpeckleRange(3);
     matcher->setSpeckleWindowSize(600);
     matcher->setPreFilterSize(9);
+    matcher->setPreFilterCap(31);
+    matcher->setSmallerBlockSize(5);
+
+    return matcher;
+}
+
+cv::Ptr<cv::StereoSGBM> create_default_stereo_SG_matcher()
+{
+    int block_size = 10;
+    cv::Ptr<cv::StereoSGBM> matcher = cv::StereoSGBM::create();
+    matcher->setNumDisparities(176);
+    matcher->setBlockSize(block_size);
+    matcher->setMinDisparity(1);
+    matcher->setUniquenessRatio(70);
+    matcher->setSpeckleRange(3);
+    matcher->setSpeckleWindowSize(400);
+    matcher->setDisp12MaxDiff(2);
+    matcher->setP1(8*block_size*block_size);
+    matcher->setP2(32*block_size*block_size);
     matcher->setPreFilterCap(31);
 
     return matcher;
@@ -71,7 +90,7 @@ cv::Mat compute_disparity_map(const cv::Mat &left_img, const cv::Mat &right_img)
     matcher->compute(left_gray, right_gray, disparity_map);
 
     // Apply filters
-    sp::filter_speckles(disparity_map, 90, 3000, 3);
+    sp::filter_speckles(disparity_map, 100, 6200, 3);
     sp::filter_invalid_disparities(disparity_map, 3);
     cv::medianBlur(disparity_map, disparity_map, 5);
 
