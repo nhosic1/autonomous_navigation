@@ -27,20 +27,23 @@ def build_apidoc(apidoc_path):
 
 
 def build_html_docs():
+    shell = False
     if sys.platform.startswith('win'):
-        clean_command = ['.\make', 'clean']
-        html_command = ['.\make', 'html']
+        clean_command = ['.\\make', 'clean']
+        html_command = ['.\\make', 'html']
+        shell = True
+        
     else:
         clean_command = ['make', 'clean']
         html_command = ['make', 'html']
     
     # Running CLEAN
-    result = subprocess.run(clean_command)
+    result = subprocess.run(clean_command, shell=shell)
     if result.returncode != 0:
         raise RuntimeError("Execution of 'make clean' failed")
 
     # Building HTML
-    subprocess.run(html_command)
+    subprocess.run(html_command, shell=shell)
     if result.returncode != 0:
         raise RuntimeError("Execution of 'make html' failed")
 
