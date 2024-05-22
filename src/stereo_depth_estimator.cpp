@@ -35,7 +35,7 @@ private:
         std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
         std::string camera_params_path = package_share_directory + "/config/sim_camera_params.yaml";
         cv::Mat camera_matrix, dist_coeffs;
-        sp::loadCameraParameters(camera_params_path, camera_matrix, dist_coeffs);
+        sp::load_camera_parameters(camera_params_path, camera_matrix, dist_coeffs);
 
         cv_bridge::CvImagePtr cv_left_img_ptr;
         cv_bridge::CvImagePtr cv_right_img_ptr;
@@ -55,7 +55,7 @@ private:
         cv::Mat left_img = cv_left_img_ptr->image;
         cv::Mat right_img = cv_right_img_ptr->image;
 
-        cv::Mat disparity_map = sp::compute_disparity_map(left_img, right_img);
+        cv::Mat disparity_map = sp::compute_disparity_map_with_consistency_checks(left_img, right_img, false);
 
         std::vector<cv::Point3f> points_3D = sp::compute_3D_points(disparity_map, camera_matrix);
         cv::Point3f closest_point(0.0f, 0.0f, std::numeric_limits<float>::max());
@@ -66,7 +66,7 @@ private:
         points3D.push_back(closest_point);
         cv::projectPoints(points3D, cv::Mat::zeros(3, 1, CV_64F), cv::Mat::zeros(3, 1, CV_64F), camera_matrix, dist_coeffs, points2D);
 
-        sp::visualize_disparity_map(disparity_map, cv::Point2i(static_cast<int>(points2D[0].x), static_cast<int>(points2D[0].y)), closest_point);
+        sp::visualize_live_disparity_map(disparity_map, cv::Point2i(static_cast<int>(points2D[0].x), static_cast<int>(points2D[0].y)), closest_point);
 
         bool snapshot = this->get_parameter("snapshot").as_bool();
         if (snapshot == true)
