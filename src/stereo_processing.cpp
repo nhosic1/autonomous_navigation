@@ -270,11 +270,6 @@ namespace sp
                 float disp_small = disparity_map_small.at<float>(y, x);
                 float disp_large = disparity_map_large.at<float>(y, x);
 
-                if (x == 1119 && y == 426)
-                {
-                    std::cout << "disp large: " << disp_large << std::endl;
-                }
-
                 // Check disparity validation and block size consistency
                 if (disp_small > 0 && disp_large > 0 && std::abs(disp_small - disp_large) <= consistency_threshold)
                 {
@@ -299,10 +294,6 @@ namespace sp
 
             apply_wls_filter(disparity_map, disparity_map, left_img, right_img, matcher);
         }
-
-        cv::Point2i point(801, 394);
-        // cv::Point2i point(1169, 375);
-        draw_stereo_match(left_img, right_img, disparity_map, point, large_block_size);
 
         return disparity_map;
     }
