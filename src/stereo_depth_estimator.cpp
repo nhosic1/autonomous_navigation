@@ -8,7 +8,7 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <filesystem>
 #include <cmath>
-#include "autonomous_driving/stereo_processing.hpp"
+#include "autonomous_navigation/stereo_processing.hpp"
 
 class StereoDepthEstimator : public rclcpp::Node
 {
@@ -31,7 +31,7 @@ private:
     // Callback function for synchronized left and right stereo images
     void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr, const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr)
     {
-        std::string package_name = "autonomous_driving";
+        std::string package_name = "autonomous_navigation";
         std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
         std::string camera_params_path = package_share_directory + "/config/sim_camera_params.yaml";
         cv::Mat camera_matrix, dist_coeffs;

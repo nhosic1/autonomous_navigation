@@ -2,7 +2,7 @@
 #include <filesystem>
 #include <cmath>
 #include <opencv2/ximgproc.hpp>
-#include "autonomous_driving/stereo_processing.hpp"
+#include "autonomous_navigation/stereo_processing.hpp"
 
 namespace sp
 {
