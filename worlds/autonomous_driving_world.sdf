@@ -1,4 +1,3 @@
-<?xml version="1.0" ?>
 <sdf version='1.9'>
   <world name='empty'>
     <physics name='1ms' type='ignored'>
@@ -18,6 +17,9 @@
       <background>0.7 0.7 0.7 1</background>
       <shadows>true</shadows>
     </scene>
+    <plugin name='ignition::gazebo::systems::Sensors' filename='libignition-gazebo-sensors-system.so'>
+      <render_engine>ogre2</render_engine>
+    </plugin>
     <model name='ground_plane'>
       <static>true</static>
       <link name='link'>
@@ -67,9 +69,18 @@
       <pose>0 0 0 0 -0 0</pose>
       <self_collide>false</self_collide>
     </model>
-    <!-- <include>
-    	<uri>../models/autonomous_vehicle</uri>
-    </include> -->
+    <include>
+      <uri>
+      https://fuel.gazebosim.org/1.0/OpenRobotics/models/aws_robomaker_warehouse_ShelfD_01
+      </uri>
+      <pose>4 4 0 0 0 0</pose>
+    </include>
+    <include>
+      <uri>
+      https://fuel.gazebosim.org/1.0/OpenRobotics/models/Office Chair
+      </uri>
+      <pose>4 -4 0 0 0 0</pose>
+    </include>
     <light name='sun' type='directional'>
       <pose>0 0 10 0 -0 0</pose>
       <cast_shadows>true</cast_shadows>
@@ -89,12 +100,5 @@
         <falloff>0</falloff>
       </spot>
     </light>
-    
-    <plugin
-		  filename="libignition-gazebo-sensors-system.so"
-		  name="ignition::gazebo::systems::Sensors">
-		  <render_engine>ogre2</render_engine>
-		</plugin>
-		
   </world>
 </sdf>
