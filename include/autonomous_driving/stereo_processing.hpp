@@ -6,7 +6,7 @@
 namespace sp
 {
     const int MIN_DISPARITY = 0;
-    const int NUM_DISPARITIES = 176;
+    const int NUM_DISPARITIES = 112;
 
     void filter_invalid_disparities(const cv::Mat &disparity_map, cv::Mat &output_disparity_map);
     void apply_wls_filter(const cv::Mat &disparity_map, cv::Mat &filtered_disparity_map, const cv::Mat &left_img, const cv::Mat &right_img, const cv::Ptr<cv::StereoMatcher> &left_matcher);

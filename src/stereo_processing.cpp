@@ -306,7 +306,7 @@ namespace sp
 
         if (closest_point_3D.z < 10000)
         {
-            cv::circle(formatted_disparity_map, closest_point_2D, 10, cv::Scalar(255, 0, 255), -1);
+            cv::circle(formatted_disparity_map, closest_point_2D, 8, cv::Scalar(255, 0, 255), -1);
 
             // Convert points to from [mm] to [m] and set precision to 2 decimal places for text output
             std::stringstream ss_x, ss_y, ss_z;
@@ -318,9 +318,9 @@ namespace sp
 
             // Define the font parameters for the point text
             int fontFace = cv::FONT_HERSHEY_SIMPLEX; // Font type
-            double fontScale = 1.1;                  // Font scale factor
+            double fontScale = 0.9;                  // Font scale factor
             cv::Scalar color(255, 0, 255);           // Text color (BGR format)
-            int thickness = 3;                       // Thickness of the text
+            int thickness = 2;                       // Thickness of the text
 
             // Calculate the size of the text bounding box
             int baseline = 0;
