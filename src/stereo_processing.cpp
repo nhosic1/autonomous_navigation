@@ -262,7 +262,7 @@ namespace sp
         cv::Mat disparity_map = cv::Mat(left_gray_img.size(), CV_32F, cv::Scalar(invalid_disp));
 
         // Consistency checks
-        const float consistency_threshold = 10.0f;
+        const float consistency_threshold = 30.0f;
         for (int y = 0; y < disparity_map.rows; ++y)
         {
             for (int x = 0; x < disparity_map.cols; ++x)
