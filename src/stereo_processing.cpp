@@ -123,14 +123,27 @@ namespace sp
         cv::Mat formatted_map;
         format_disp_map_for_visualization(map, formatted_map, scale, inverse);
 
+        cv::namedWindow(name);
+
+        // Set the mouse callback for showing pixel coordinates
+        cv::setMouseCallback(name, onMouse);
+
         cv::imshow(name, formatted_map);
         cv::waitKey(0);
     }
 
-    void draw_stereo_match(const cv::Mat &left_img, const cv::Mat &right_img, const cv::Mat &disparity_map, const cv::Point2i &point)
+    void draw_stereo_match(const cv::Mat &left_img, const cv::Mat &right_img, const cv::Mat &disparity_map, const cv::Point2i &point, int block_size)
     {
+        // Calculate the half-length of one side of the rectangle
+        int half_side_length = block_size / 2;
+
         // Draw the point in the left image
         cv::circle(left_img, point, 8, cv::Scalar(0, 255, 0), 2); // Green circle
+
+        // Draw the searching block
+        cv::Point top_left1(point.x - half_side_length, point.y - half_side_length);
+        cv::Point bottom_right1(point.x + half_side_length, point.y + half_side_length);
+        cv::rectangle(left_img, top_left1, bottom_right1, cv::Scalar(0, 0, 255), 2); // Red rectangle
 
         // Calculate corresponding point in the right image based on disparity map
         int16_t disparity_scaled = disparity_map.at<int16_t>(point.y, point.x);
@@ -139,6 +152,11 @@ namespace sp
 
         // Draw the corresponding point in the right image
         cv::circle(right_img, corresponding_point, 8, cv::Scalar(0, 255, 0), 2); // Green circle
+
+        // Draw the searching block
+        cv::Point top_left2(corresponding_point.x - half_side_length, corresponding_point.y - half_side_length);
+        cv::Point bottom_right2(corresponding_point.x + half_side_length, corresponding_point.y + half_side_length);
+        cv::rectangle(right_img, top_left2, bottom_right2, cv::Scalar(0, 0, 255), 2); // Red rectangle
 
         // Display both images
         cv::imshow("Left Image with Point of Interest", left_img);
@@ -162,10 +180,10 @@ namespace sp
     {
         cv::Ptr<cv::StereoBM> matcher = cv::StereoBM::create();
         matcher->setNumDisparities(NUM_DISPARITIES);
-        matcher->setBlockSize(11);
+        matcher->setBlockSize(9);
         matcher->setMinDisparity(MIN_DISPARITY);
         matcher->setUniquenessRatio(12);
-        matcher->setTextureThreshold(30);
+        matcher->setTextureThreshold(50);
         matcher->setSpeckleRange(10);
         matcher->setSpeckleWindowSize(400);
         matcher->setPreFilterType(cv::StereoBM::PREFILTER_NORMALIZED_RESPONSE);
@@ -215,7 +233,7 @@ namespace sp
     }
 
     // Accepts CV_8UC3 color images
-    cv::Mat compute_disparity_map_with_consistency_checks(const cv::Mat &left_img, const cv::Mat &right_img, bool wls_filter)
+    cv::Mat compute_disparity_map_with_consistency_check(const cv::Mat &left_img, const cv::Mat &right_img, bool wls_filter)
     {
         cv::Mat left_gray_img, right_gray_img;
         cv::cvtColor(left_img, left_gray_img, cv::COLOR_BGR2GRAY);
@@ -224,35 +242,20 @@ namespace sp
         const int small_block_size = 9;
         const int large_block_size = 71;
 
-        // Create default matcher
         cv::Ptr<cv::StereoBM> matcher = sp::create_default_stereo_matcher();
-        int min_disparity = matcher->getMinDisparity();
-        int num_disparities = matcher->getNumDisparities();
+        cv::Mat disparity_map_small, disparity_map_large;
 
-        // Compute disparity maps with left image as a reference
-        cv::Mat left_disparity_map_small, left_disparity_map_large;
-
+        // Compute disparity map with small block size
         matcher->setBlockSize(small_block_size);
-        matcher->compute(left_gray_img, right_gray_img, left_disparity_map_small);
+        matcher->compute(left_gray_img, right_gray_img, disparity_map_small);
 
+        // Compute disparity map with large block size
         matcher->setBlockSize(large_block_size);
-        matcher->compute(left_gray_img, right_gray_img, left_disparity_map_large);
-
-        // Compute disparity maps with right image as a reference
-        cv::Mat right_disparity_map_small, right_disparity_map_large;
-        matcher->setMinDisparity(-num_disparities);
-
-        matcher->setBlockSize(small_block_size);
-        matcher->compute(right_gray_img, left_gray_img, right_disparity_map_small);
-
-        matcher->setBlockSize(large_block_size);
-        matcher->compute(right_gray_img, left_gray_img, right_disparity_map_large);
+        matcher->compute(left_gray_img, right_gray_img, disparity_map_large);
 
         // Convert disparity maps to CV_32F
-        left_disparity_map_small.convertTo(left_disparity_map_small, CV_32F, 1.0 / 16.0);
-        right_disparity_map_small.convertTo(right_disparity_map_small, CV_32F, 1.0 / 16.0);
-        left_disparity_map_large.convertTo(left_disparity_map_large, CV_32F, 1.0 / 16.0);
-        right_disparity_map_large.convertTo(right_disparity_map_large, CV_32F, 1.0 / 16.0);
+        disparity_map_small.convertTo(disparity_map_small, CV_32F, 1.0 / 16.0);
+        disparity_map_large.convertTo(disparity_map_large, CV_32F, 1.0 / 16.0);
 
         // Initialize the final disparity map
         const float invalid_disp = -1.0f;
@@ -264,52 +267,18 @@ namespace sp
         {
             for (int x = 0; x < disparity_map.cols; ++x)
             {
-                float left_disp_small = left_disparity_map_small.at<float>(y, x);
-                float left_disp_large = left_disparity_map_large.at<float>(y, x);
-                float right_disp_small = invalid_disp;
-                float right_disp_large = invalid_disp;
+                float disp_small = disparity_map_small.at<float>(y, x);
+                float disp_large = disparity_map_large.at<float>(y, x);
 
-                if (left_disp_small > 0)
+                if (x == 1119 && y == 426)
                 {
-                    int x_right_small = x - static_cast<int>(left_disp_small);
-                    if (x_right_small >= 0)
-                    {
-                        right_disp_small = right_disparity_map_small.at<float>(y, x_right_small) * -1;
-                    }
+                    std::cout << "disp large: " << disp_large << std::endl;
                 }
 
-                if (left_disp_large > 0)
+                // Check disparity validation and block size consistency
+                if (disp_small > 0 && disp_large > 0 && std::abs(disp_small - disp_large) <= consistency_threshold)
                 {
-                    int x_right_large = x - static_cast<int>(left_disp_large);
-                    if (x_right_large >= 0)
-                    {
-                        right_disp_large = right_disparity_map_large.at<float>(y, x_right_large) * -1;
-                    }
-                }
-
-                if (right_disp_small > num_disparities)
-                {
-                    right_disp_small = invalid_disp;
-                }
-                if (right_disp_large > num_disparities)
-                {
-                    right_disp_large = invalid_disp;
-                }
-
-                if ((left_disp_small > 0 && right_disp_small > 0 && left_disp_large > 0 && right_disp_large > 0) && // Check if all disparities are valid
-                    (std::abs(left_disp_small - right_disp_small) <= consistency_threshold) &&                      // Check left-right consistency for small block
-                    (std::abs(left_disp_large - right_disp_large) <= consistency_threshold))                        // Check left-right consistency for large block
-                {
-                    if (std::abs(left_disp_small - left_disp_large) <= consistency_threshold) // Check block size consistency (left img as ref)
-                    {
-                        disparity_map.at<float>(y, x) = left_disp_small;
-                    }
-                    else
-                    {
-                        // Set the inconsistent disparity to the value computed with larger block size
-                        // (provides more robust matches in areas with repetitive textures)
-                        disparity_map.at<float>(y, x) = left_disp_large;
-                    }
+                    disparity_map.at<float>(y, x) = disp_small;
                 }
             }
         }
@@ -325,12 +294,15 @@ namespace sp
 
         if (wls_filter)
         {
-            // Set matcher parameters used for computing disparity map with small block size
+            // Use the same matcher parameters used for computing disparity map with small block size
             matcher->setBlockSize(small_block_size);
-            matcher->setMinDisparity(min_disparity);
 
             apply_wls_filter(disparity_map, disparity_map, left_img, right_img, matcher);
         }
+
+        cv::Point2i point(801, 394);
+        // cv::Point2i point(1169, 375);
+        draw_stereo_match(left_img, right_img, disparity_map, point, large_block_size);
 
         return disparity_map;
     }

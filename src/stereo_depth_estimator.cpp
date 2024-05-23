@@ -55,7 +55,7 @@ private:
         cv::Mat left_img = cv_left_img_ptr->image;
         cv::Mat right_img = cv_right_img_ptr->image;
 
-        cv::Mat disparity_map = sp::compute_disparity_map_with_consistency_checks(left_img, right_img, false);
+        cv::Mat disparity_map = sp::compute_disparity_map_with_consistency_check(left_img, right_img, false);
 
         std::vector<cv::Point3f> points_3D = sp::compute_3D_points(disparity_map, camera_matrix);
         cv::Point3f closest_point(0.0f, 0.0f, std::numeric_limits<float>::max());
