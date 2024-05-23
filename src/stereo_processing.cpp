@@ -77,6 +77,13 @@ namespace sp
         }
     }
 
+    int count_valid_disparities(const cv::Mat &disparity_map)
+    {
+        cv::Mat mask = (disparity_map > MIN_DISPARITY * 16);
+        int count = cv::countNonZero(mask);
+        return count;
+    }
+
     void format_disp_map_for_visualization(const cv::Mat &disparity_map, cv::Mat &output_disparity_map, const float &scale, bool inverse_values = false)
     {
         cv::Mat unfiltered_disparity_map = disparity_map.clone();
