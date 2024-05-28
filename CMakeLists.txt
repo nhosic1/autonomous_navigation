@@ -12,6 +12,7 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(cv_bridge REQUIRED)
+# find_package(raspicam REQUIRED)
 
 include_directories(
   include
@@ -22,13 +23,20 @@ set(library_name stereo_processing)
 add_library(${library_name} SHARED src/stereo_processing.cpp)
 ament_target_dependencies(${library_name} OpenCV)
 
-add_executable(stereo_depth_estimator src/stereo_depth_estimator.cpp)
-target_link_libraries(stereo_depth_estimator ${library_name})
-target_include_directories(stereo_depth_estimator PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-target_compile_features(stereo_depth_estimator PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+function(add_package_executable target)
+  add_executable(${target} src/${target}.cpp)
+  target_link_libraries(${target} ${library_name})
+  target_include_directories(${target} PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+  target_compile_features(${target} PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+endfunction()
+
+add_package_executable(stereo_depth_estimator)
 ament_target_dependencies(stereo_depth_estimator rclcpp std_msgs sensor_msgs message_filters cv_bridge OpenCV)
+
+add_package_executable(rpi_stereo_depth_estimator)
+ament_target_dependencies(rpi_stereo_depth_estimator rclcpp cv_bridge OpenCV)
 
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY worlds DESTINATION share/${PROJECT_NAME})
@@ -41,6 +49,7 @@ install(TARGETS ${library_name}
   RUNTIME DESTINATION bin
 )
 install(TARGETS stereo_depth_estimator DESTINATION lib/${PROJECT_NAME})
+install(TARGETS rpi_stereo_depth_estimator DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
