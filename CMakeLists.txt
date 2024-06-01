@@ -12,7 +12,7 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(cv_bridge REQUIRED)
-# find_package(raspicam REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 
 include_directories(
   include
@@ -33,10 +33,10 @@ function(add_package_executable target)
 endfunction()
 
 add_package_executable(stereo_depth_estimator)
-ament_target_dependencies(stereo_depth_estimator rclcpp std_msgs sensor_msgs message_filters cv_bridge OpenCV)
+ament_target_dependencies(stereo_depth_estimator rclcpp std_msgs sensor_msgs message_filters cv_bridge OpenCV ament_index_cpp)
 
 add_package_executable(rpi_stereo_depth_estimator)
-ament_target_dependencies(rpi_stereo_depth_estimator rclcpp cv_bridge OpenCV)
+ament_target_dependencies(rpi_stereo_depth_estimator rclcpp cv_bridge OpenCV ament_index_cpp)
 
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY worlds DESTINATION share/${PROJECT_NAME})
