@@ -33,9 +33,4 @@ def generate_launch_description():
             output='screen',
             ros_arguments=['-p', f'config_file:={config_path}']
         ),
-        # Node(
-        #     package='autonomous_navigation',
-        #     executable='stereo_depth_estimator',
-        #     name='stereo_depth_estimator'
-        # )
     ])
