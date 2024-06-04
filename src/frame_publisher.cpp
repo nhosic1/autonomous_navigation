@@ -8,15 +8,15 @@
 
 using namespace libcamera;
 
-class  : public rclcpp::Node
+class FramePublisher : public rclcpp::Node
 {
 public:
     FramePublisher() : Node("frame_publisher")
     {
         this->declare_parameter("camera_id", 0);
-        int camera_id = this->get_parameter("camera_id").as_int();
-        std::string topic_name = "~/camera_" + std::to_string(camera_id) + "/image";
-        CameraNode::image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>(topic_name, 1);
+        camera_id_ = this->get_parameter("camera_id").as_int();
+        std::string topic_name = "~/camera_" + std::to_string(camera_id_) + "/image";
+        FramePublisher::image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>(topic_name, 1);
 
         // Frame size params
         const int frame_width = 1536;
@@ -26,7 +26,7 @@ public:
         cm_->start();
 
         // Acquire the specified camera
-        std::string camera_str_id = cm_->cameras()[camera_id]->id();
+        std::string camera_str_id = cm_->cameras()[camera_id_]->id();
         camera_ = cm_->get(camera_str_id);
         camera_->acquire();
 
@@ -62,7 +62,7 @@ public:
         }
 
         // Connect processing slot to requestCompleted signal
-        camera_->requestCompleted.connect(this, &CameraNode::process_request);
+        camera_->requestCompleted.connect(this, &FramePublisher::process_request);
 
         // Start capturing frames
         camera_->start();
@@ -70,7 +70,7 @@ public:
             camera_->queueRequest(request.get());
     }
 
-    ~CameraNode()
+    ~FramePublisher()
     {
         camera_->stop();
         allocator_->free(stream_);
@@ -109,7 +109,7 @@ private:
             // send image data
             std_msgs::msg::Header hdr;
             hdr.stamp = rclcpp::Time(int64_t(metadata.timestamp));
-            hdr.frame_id = "camera_" + std::to_string(camera_id);
+            hdr.frame_id = "camera_" + std::to_string(camera_id_);
             const libcamera::StreamConfiguration &stream_cfg = stream->configuration();
 
             auto msg_img = sensor_msgs::msg::Image();
@@ -143,6 +143,7 @@ private:
         camera_->queueRequest(request);
     }
 
+    int camera_id_;
     std::shared_ptr<Camera> camera_;
     std::unique_ptr<CameraManager> cm_;
     Stream *stream_;
