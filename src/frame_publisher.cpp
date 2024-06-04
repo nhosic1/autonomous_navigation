@@ -8,14 +8,14 @@
 
 using namespace libcamera;
 
-class CameraNode : public rclcpp::Node
+class  : public rclcpp::Node
 {
 public:
-    CameraNode() : Node("rpi_camera")
+    FramePublisher() : Node("frame_publisher")
     {
         this->declare_parameter("camera_id", 0);
         int camera_id = this->get_parameter("camera_id").as_int();
-        std::string topic_name = "~/rpi_camera" + std::to_string(camera_id) + "/image";
+        std::string topic_name = "~/camera_" + std::to_string(camera_id) + "/image";
         CameraNode::image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>(topic_name, 1);
 
         // Frame size params
@@ -37,7 +37,6 @@ public:
         stream_config.size.width = frame_width;
         stream_config.size.height = frame_height;
         stream_config.pixelFormat = formats::BGR888;
-        // stream_config.bufferCount = 1;
 
         // Validate the config (original config might be modified, if invalid)
         config->validate();
@@ -94,21 +93,6 @@ private:
             FrameBuffer *buffer = buffer_pair.second;
             const FrameMetadata &metadata = buffer->metadata();
 
-            // /* Print some information about the buffer which has completed. */
-            // std::cout << " seq: " << std::setw(6) << std::setfill('0') << metadata.sequence
-            //           << " timestamp: " << metadata.timestamp
-            //           << " bytesused: ";
-
-            // unsigned int nplane = 0;
-            // for (const FrameMetadata::Plane &plane : metadata.planes())
-            // {
-            //     std::cout << plane.bytesused;
-            //     if (++nplane < metadata.planes().size())
-            //         std::cout << "/";
-            // }
-
-            // std::cout << std::endl;
-
             // Planes of the same buffer should use the same file descriptor
             size_t buffer_length = 0;
             int fd = -1;
@@ -125,7 +109,7 @@ private:
             // send image data
             std_msgs::msg::Header hdr;
             hdr.stamp = rclcpp::Time(int64_t(metadata.timestamp));
-            hdr.frame_id = "left_camera";
+            hdr.frame_id = "camera_" + std::to_string(camera_id);
             const libcamera::StreamConfiguration &stream_cfg = stream->configuration();
 
             auto msg_img = sensor_msgs::msg::Image();
@@ -148,8 +132,7 @@ private:
             }
 
             // Publish image message
-            // image_publisher_->publish(msg_img);
-            std::cout << "Image published!" << std::endl;
+            image_publisher_->publish(msg_img);
 
             // Unmap the buffer
             munmap(data, buffer_length);
@@ -172,7 +155,7 @@ int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
 
-    auto node = std::make_shared<CameraNode>();
+    auto node = std::make_shared<FramePublisher>();
 
     rclcpp::spin(node);
     rclcpp::shutdown();

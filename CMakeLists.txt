@@ -38,11 +38,11 @@ endfunction()
 add_package_executable(stereo_depth_estimator)
 ament_target_dependencies(stereo_depth_estimator rclcpp std_msgs sensor_msgs message_filters cv_bridge OpenCV ament_index_cpp)
 
-add_package_executable(rpi_stereo_depth_estimator)
-ament_target_dependencies(rpi_stereo_depth_estimator rclcpp cv_bridge OpenCV ament_index_cpp)
+add_package_executable(frame_publisher)
+ament_target_dependencies(frame_publisher rclcpp cv_bridge OpenCV ament_index_cpp)
 
-target_include_directories(rpi_stereo_depth_estimator PUBLIC ${libcamera_INCLUDE_DIRS})
-target_link_libraries(rpi_stereo_depth_estimator ${libcamera_LINK_LIBRARIES})
+target_include_directories(frame_publisher PUBLIC ${libcamera_INCLUDE_DIRS})
+target_link_libraries(frame_publisher ${libcamera_LINK_LIBRARIES})
 
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY worlds DESTINATION share/${PROJECT_NAME})
@@ -55,7 +55,7 @@ install(TARGETS ${library_name}
   RUNTIME DESTINATION bin
 )
 install(TARGETS stereo_depth_estimator DESTINATION lib/${PROJECT_NAME})
-install(TARGETS rpi_stereo_depth_estimator DESTINATION lib/${PROJECT_NAME})
+install(TARGETS frame_publisher DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
