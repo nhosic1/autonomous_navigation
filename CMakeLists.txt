@@ -14,6 +14,9 @@ find_package(message_filters REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(libcamera REQUIRED libcamera)
+
 include_directories(
   include
 )
@@ -37,6 +40,9 @@ ament_target_dependencies(stereo_depth_estimator rclcpp std_msgs sensor_msgs mes
 
 add_package_executable(rpi_stereo_depth_estimator)
 ament_target_dependencies(rpi_stereo_depth_estimator rclcpp cv_bridge OpenCV ament_index_cpp)
+
+target_include_directories(rpi_stereo_depth_estimator PUBLIC ${libcamera_INCLUDE_DIRS})
+target_link_libraries(rpi_stereo_depth_estimator ${libcamera_LINK_LIBRARIES})
 
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY worlds DESTINATION share/${PROJECT_NAME})
