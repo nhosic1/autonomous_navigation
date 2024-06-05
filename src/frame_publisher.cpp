@@ -19,8 +19,8 @@ public:
         FramePublisher::image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>(topic_name, 1);
 
         // Frame size params
-        const int frame_width = 1536;
-        const int frame_height = 864;
+        const int frame_width = 768;
+        const int frame_height = 432;
 
         cm_ = std::make_unique<CameraManager>();
         cm_->start();
@@ -31,23 +31,26 @@ public:
         camera_->acquire();
 
         // Configure the camera with the StillCapture stream
-        std::unique_ptr<CameraConfiguration> config = camera_->generateConfiguration({StreamRole::StillCapture});
+        std::unique_ptr<CameraConfiguration> config = camera_->generateConfiguration({StreamRole::Viewfinder});
         StreamConfiguration &stream_config = config->at(0);
 
         stream_config.size.width = frame_width;
         stream_config.size.height = frame_height;
-        stream_config.pixelFormat = formats::BGR888;
+        stream_config.pixelFormat = formats::RGB888;
 
         // Validate the config (original config might be modified, if invalid)
         config->validate();
         camera_->configure(config.get());
 
-        std::cout << "Validated StillCapture configuration is: " << stream_config.toString() << std::endl;
+        RCLCPP_INFO(this->get_logger(), "Validated configuration: %s", stream_config.toString().c_str());
 
         // Allocate frame buffers to makes sure the frames are not lost
         stream_ = stream_config.stream();
         allocator_ = new FrameBufferAllocator(camera_);
         allocator_->allocate(stream_);
+
+        int allocated_buffer_count = allocator_->buffers(stream_).size();
+        RCLCPP_INFO(this->get_logger(), "Allocated buffers: %d", allocated_buffer_count);
 
         for (const std::unique_ptr<libcamera::FrameBuffer> &buffer : allocator_->buffers(stream_))
         {
@@ -55,7 +58,7 @@ public:
 
             if (request->addBuffer(stream_, buffer.get()) < 0)
             {
-                std::cerr << "Failed to set buffer for frame request" << std::endl;
+                RCLCPP_ERROR(this->get_logger(), "Failed to set buffer for frame request");
             }
 
             requests_.push_back(std::move(request));
@@ -114,7 +117,7 @@ private:
 
             auto msg_img = sensor_msgs::msg::Image();
             
-            if (stream_cfg.pixelFormat.fourcc() == formats::BGR888.fourcc())
+            if (stream_cfg.pixelFormat.fourcc() == formats::RGB888.fourcc())
             {
                 msg_img.header = hdr;
                 msg_img.width = stream_cfg.size.width;
@@ -127,8 +130,8 @@ private:
             }
             else
             {
-                throw std::runtime_error("unsupported pixel format: " +
-                                         stream->configuration().pixelFormat.toString());
+                RCLCPP_ERROR(this->get_logger(), "Unsupported pixel format: %s", stream->configuration().pixelFormat.toString().c_str());
+                rclcpp::shutdown();
             }
 
             // Publish image message
