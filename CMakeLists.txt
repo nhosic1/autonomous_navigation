@@ -39,7 +39,7 @@ add_package_executable(stereo_depth_estimator)
 ament_target_dependencies(stereo_depth_estimator rclcpp std_msgs sensor_msgs message_filters cv_bridge OpenCV ament_index_cpp)
 
 add_package_executable(frame_publisher)
-ament_target_dependencies(frame_publisher rclcpp cv_bridge OpenCV ament_index_cpp)
+ament_target_dependencies(frame_publisher rclcpp sensor_msgs)
 
 target_include_directories(frame_publisher PUBLIC ${libcamera_INCLUDE_DIRS})
 target_link_libraries(frame_publisher ${libcamera_LINK_LIBRARIES})
