@@ -3,7 +3,6 @@
 #include <builtin_interfaces/msg/time.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <message_filters/subscriber.h>
-// #include <message_filters/time_synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.hpp>
@@ -20,12 +19,12 @@ public:
     StereoDepthEstimator() : Node("stereo_depth_estimator")
     {
         // Create a timer to check FPS
-        timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]() {
+        timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]()
+                                         {
             RCLCPP_INFO(this->get_logger(), "FPS = %d", callback_count_);
 
             // Reset the callback count
-            callback_count_ = 0;
-        });
+            callback_count_ = 0; });
 
         // Initialize the callback count
         callback_count_ = 0;
@@ -33,14 +32,20 @@ public:
         this->declare_parameter("snapshot", false);
         this->declare_parameter("data_folder", "");
 
+        std::string package_name = "autonomous_navigation";
+        std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
+        std::string stereo_camera_params_path = package_share_directory + "/config/stereo_camera_params.yaml";
+
+        // Load params for stereo camera
+        sp::load_stereo_camera_parameters(stereo_camera_params_path, camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, T_);
+
         // Create subscribers for left and right stereo image topics
         left_subscriber_.subscribe(this, "/left_camera/image");
         right_subscriber_.subscribe(this, "/right_camera/image");
 
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
-        time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0,10000000)); // 0.01 sec
-        // time_sync_ = std::make_shared<message_filters::TimeSynchronizer<sensor_msgs::msg::Image, sensor_msgs::msg::Image>>(left_subscriber_, right_subscriber_, 10);
+        time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 30000000)); // 0.03 sec
         time_sync_->registerCallback(std::bind(&StereoDepthEstimator::imageCallback, this, std::placeholders::_1, std::placeholders::_2));
     }
 
@@ -48,12 +53,6 @@ private:
     // Callback function for synchronized left and right stereo images
     void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr, const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr)
     {
-        std::string package_name = "autonomous_navigation";
-        std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
-        std::string camera_params_path = package_share_directory + "/config/sim_camera_params.yaml";
-        cv::Mat camera_matrix, dist_coeffs;
-        sp::load_camera_parameters(camera_params_path, camera_matrix, dist_coeffs);
-
         cv_bridge::CvImagePtr cv_left_img_ptr;
         cv_bridge::CvImagePtr cv_right_img_ptr;
 
@@ -72,22 +71,25 @@ private:
         cv::Mat left_img = cv_left_img_ptr->image;
         cv::Mat right_img = cv_right_img_ptr->image;
 
-        // cv::Mat disparity_map = sp::compute_disparity_map_with_consistency_check(left_img, right_img, false);
+        // Undistort and rectify images
+        cv::remap(left_img, left_img, map_1_L_, map_2_L_, cv::INTER_LINEAR);
+        cv::remap(right_img, right_img, map_1_R_, map_2_R_, cv::INTER_LINEAR);
 
-        // std::vector<cv::Point3f> points_3D = sp::compute_3D_points(disparity_map, camera_matrix);
-        // cv::Point3f closest_point(0.0f, 0.0f, std::numeric_limits<float>::max());
-        // find_closest_point(points_3D, closest_point);
+        cv::Mat disparity_map = sp::compute_disparity_map_with_consistency_check(left_img, right_img, false);
 
-        // std::vector<cv::Point2f> points2D;
-        // std::vector<cv::Point3f> points3D;
-        // points3D.push_back(closest_point);
-        // cv::projectPoints(points3D, cv::Mat::zeros(3, 1, CV_64F), cv::Mat::zeros(3, 1, CV_64F), camera_matrix, dist_coeffs, points2D);
+        // Compute the arithmetic average of camera matrices
+        cv::Mat camera_matrix = (camera_matrix_L_ + camera_matrix_R_) / 2.0;
+        std::vector<cv::Point3f> points_3D = sp::compute_3D_points(disparity_map, camera_matrix, std::abs(T_.at<double>(0)));
+        cv::Point3f closest_point(0.0f, 0.0f, std::numeric_limits<float>::max());
+        find_closest_point(points_3D, closest_point);
 
-        // RCLCPP_INFO(this->get_logger(), "Stereo pair synced");
-        cv::imshow("Disparity Map", left_img);
-        cv::waitKey(1);
+        std::vector<cv::Point2f> points2D;
+        std::vector<cv::Point3f> points3D;
+        points3D.push_back(closest_point);
+        cv::projectPoints(points3D, cv::Mat::zeros(3, 1, CV_64F), cv::Mat::zeros(3, 1, CV_64F), camera_matrix_L_, dist_coeffs_L_, points2D);
+
         callback_count_++;
-        // sp::visualize_live_disparity_map(disparity_map, cv::Point2i(static_cast<int>(points2D[0].x), static_cast<int>(points2D[0].y)), closest_point);
+        sp::visualize_live_disparity_map(disparity_map, cv::Point2i(static_cast<int>(points2D[0].x), static_cast<int>(points2D[0].y)), closest_point);
 
         bool snapshot = this->get_parameter("snapshot").as_bool();
         if (snapshot == true)
@@ -175,6 +177,11 @@ private:
     int callback_count_;
     rclcpp::Time last_reset_;
     rclcpp::TimerBase::SharedPtr timer_;
+
+    // Stereo camera params
+    cv::Mat camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_;
+    cv::Mat camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_;
+    cv::Mat T_;
 };
 
 int main(int argc, char **argv)
@@ -182,8 +189,8 @@ int main(int argc, char **argv)
     // Create a named window for visualization
     cv::namedWindow("Disparity Map", cv::WINDOW_AUTOSIZE);
 
-    // Window is black by default 
-    cv::imshow("Disparity Map", cv::Mat(432, 768, CV_8UC3, cv::Scalar(0, 0, 0))); 
+    // Window is black by default
+    cv::imshow("Disparity Map", cv::Mat(432, 768, CV_8UC3, cv::Scalar(0, 0, 0)));
     cv::waitKey(1000);
 
     // Initialize ROS 2 node

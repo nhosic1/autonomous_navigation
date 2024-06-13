@@ -347,13 +347,12 @@ namespace sp
         cv::waitKey(1); // Wait for a key press (1 millisecond)
     }
 
-    std::vector<cv::Point3f> compute_3D_points(const cv::Mat &disparity_map, const cv::Mat &camera_matrix)
+    std::vector<cv::Point3f> compute_3D_points(const cv::Mat &disparity_map, const cv::Mat &camera_matrix, float baseline)
     {
         float fx = camera_matrix.at<double>(0, 0); // unit: [mm]
         float fy = camera_matrix.at<double>(1, 1); // unit: [mm]
         float cx = camera_matrix.at<double>(0, 2); // unit: [px]
         float cy = camera_matrix.at<double>(1, 2); // unit: [px]
-        float baseline = 180.0;                    // unit: [mm]
 
         // Compute 3D points from disparity map
         std::vector<cv::Point3f> points_3D;
@@ -380,7 +379,7 @@ namespace sp
         return points_3D; // unit: [mm]
     }
 
-    void load_camera_parameters(const std::string &file_path, cv::Mat &camera_matrix, cv::Mat &dist_coeffs)
+    void load_stereo_camera_parameters(const std::string &file_path, cv::Mat &camera_matrix_L, cv::Mat &dist_coeffs_L, cv::Mat &map_1_L, cv::Mat &map_2_L, cv::Mat &camera_matrix_R, cv::Mat &dist_coeffs_R, cv::Mat &map_1_R, cv::Mat &map_2_R, cv::Mat &T)
     {
         cv::FileStorage fs(file_path, cv::FileStorage::READ);
         if (!fs.isOpened())
@@ -389,13 +388,32 @@ namespace sp
             return;
         }
 
-        // Load camera matrix
-        fs["camera_matrix"] >> camera_matrix;
-        camera_matrix.convertTo(camera_matrix, CV_64F);
+        // Load camera matrices
+        fs["camera_matrix_L"] >> camera_matrix_L;
+        fs["camera_matrix_R"] >> camera_matrix_R;
+        camera_matrix_L.convertTo(camera_matrix_L, CV_64F);
+        camera_matrix_R.convertTo(camera_matrix_R, CV_64F);
 
         // Load distortion coefficients
-        fs["dist_coeffs"] >> dist_coeffs;
-        dist_coeffs.convertTo(dist_coeffs, CV_64F);
+        fs["dist_coeffs_L"] >> dist_coeffs_L;
+        fs["dist_coeffs_R"] >> dist_coeffs_R;
+        dist_coeffs_L.convertTo(dist_coeffs_L, CV_64F);
+        dist_coeffs_R.convertTo(dist_coeffs_R, CV_64F);
+
+        // Load undistortion and rectification maps
+        fs["map_1_L"] >> map_1_L;
+        fs["map_1_R"] >> map_1_R;
+        map_1_L.convertTo(map_1_L, CV_16SC2);
+        map_1_R.convertTo(map_1_R, CV_16SC2);
+
+        fs["map_2_L"] >> map_2_L;
+        fs["map_2_R"] >> map_2_R;
+        map_2_L.convertTo(map_2_L, CV_16UC1);
+        map_2_R.convertTo(map_2_R, CV_16UC1);
+
+        // Load translation vector
+        fs["T"] >> T;
+        T.convertTo(T, CV_64F);
 
         fs.release();
     }
