@@ -3,7 +3,6 @@
 #include <sensor_msgs/image_encodings.hpp>
 #include <sys/mman.h>
 #include <libcamera/libcamera.h>
-#include "autonomous_navigation/stereo_processing.hpp"
 
 using namespace libcamera;
 
@@ -15,7 +14,7 @@ public:
         this->declare_parameter("camera_id", 0);
         camera_id_ = this->get_parameter("camera_id").as_int();
         std::string topic_name = "~/camera_" + std::to_string(camera_id_) + "/image";
-        FramePublisher::image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>(topic_name, 1);
+        FramePublisher::image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>(topic_name, 10);
 
         // Frame size params
         const int frame_width = 768;
@@ -30,7 +29,7 @@ public:
         camera_->acquire();
 
         // Configure the camera with the StillCapture stream
-        std::unique_ptr<CameraConfiguration> config = camera_->generateConfiguration({StreamRole::Viewfinder});
+        std::unique_ptr<CameraConfiguration> config = camera_->generateConfiguration({StreamRole::StillCapture});
         StreamConfiguration &stream_config = config->at(0);
 
         stream_config.size.width = frame_width;
@@ -50,7 +49,10 @@ public:
 
         int allocated_buffer_count = allocator_->buffers(stream_).size();
         RCLCPP_INFO(this->get_logger(), "Allocated buffers: %d", allocated_buffer_count);
-
+        
+        long min_frame_duration = 25000; // microseconds
+        long max_frame_duration = 25000; // microseconds
+        
         for (const std::unique_ptr<libcamera::FrameBuffer> &buffer : allocator_->buffers(stream_))
         {
             std::unique_ptr<libcamera::Request> request = camera_->createRequest();
@@ -60,14 +62,21 @@ public:
                 RCLCPP_ERROR(this->get_logger(), "Failed to set buffer for frame request");
             }
 
+            // Set frame rate to 40 Hz
+            request->controls().set(controls::FrameDurationLimits, Span<const std::int64_t, 2>({min_frame_duration, max_frame_duration}));
+
             requests_.push_back(std::move(request));
         }
+
+        double frame_rate = 1.0 / (static_cast<double>(min_frame_duration) / 1e6);
+        RCLCPP_INFO(this->get_logger(), "Frame rate: %.2f Hz", frame_rate);
 
         // Connect processing slot to requestCompleted signal
         camera_->requestCompleted.connect(this, &FramePublisher::process_request);
 
         // Start capturing frames
         camera_->start();
+
         for (std::unique_ptr<Request> &request : requests_)
             camera_->queueRequest(request.get());
     }
