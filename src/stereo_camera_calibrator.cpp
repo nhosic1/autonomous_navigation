@@ -126,6 +126,8 @@ int main(int argc, char **argv)
     cv::Mat opt_camera_matrix_L, opt_camera_matrix_R;
     std::vector<cv::Mat> R_L, T_L, R_R, T_R;
 
+    RCLCPP_INFO(node->get_logger(), "Calibrating...");
+
     // Calibrate cameras
     cv::calibrateCamera(all_corners_3D, all_corners_2D_L, cv::Size(image_gray_L.rows, image_gray_L.cols), camera_matrix_L, dist_coeffs_L, R_L, T_L);
     opt_camera_matrix_L = cv::getOptimalNewCameraMatrix(camera_matrix_L, dist_coeffs_L, image_gray_L.size(), 1, image_gray_L.size(), 0);
@@ -152,7 +154,6 @@ int main(int argc, char **argv)
     mean_error_R /= all_corners_3D.size();
     RCLCPP_INFO(node->get_logger(), "Mean re-projection error (left camera): %f", mean_error_L);
     RCLCPP_INFO(node->get_logger(), "Mean re-projection error (right camera): %f", mean_error_R);
-    RCLCPP_INFO(node->get_logger(), "Cameras calibrated successfully");
 
     cv::Mat R, T, E, F;
 
@@ -233,6 +234,8 @@ int main(int argc, char **argv)
 
         fs.release();
     }
+
+    RCLCPP_INFO(node->get_logger(), "Cameras calibrated successfully");
 
     rclcpp::shutdown();
     return 0;
