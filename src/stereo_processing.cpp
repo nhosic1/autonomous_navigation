@@ -187,16 +187,16 @@ namespace sp
     {
         cv::Ptr<cv::StereoBM> matcher = cv::StereoBM::create();
         matcher->setNumDisparities(NUM_DISPARITIES);
-        matcher->setBlockSize(9);
+        matcher->setBlockSize(11);
         matcher->setMinDisparity(MIN_DISPARITY);
-        matcher->setUniquenessRatio(12);
-        matcher->setTextureThreshold(50);
+        matcher->setUniquenessRatio(10); 
+        matcher->setTextureThreshold(30); 
         matcher->setSpeckleRange(10);
-        matcher->setSpeckleWindowSize(400);
-        matcher->setPreFilterType(cv::StereoBM::PREFILTER_NORMALIZED_RESPONSE);
+        matcher->setSpeckleWindowSize(200);
+        // matcher->setPreFilterType(cv::StereoBM::PREFILTER_NORMALIZED_RESPONSE);
         matcher->setPreFilterSize(5);
         matcher->setPreFilterCap(32);
-        matcher->setSmallerBlockSize(5);
+        matcher->setSmallerBlockSize(3);
 
         return matcher;
     }
@@ -246,8 +246,8 @@ namespace sp
         cv::cvtColor(left_img, left_gray_img, cv::COLOR_BGR2GRAY);
         cv::cvtColor(right_img, right_gray_img, cv::COLOR_BGR2GRAY);
 
-        const int small_block_size = 9;
-        const int large_block_size = 71;
+        const int small_block_size = 7;
+        const int large_block_size = 41;
 
         cv::Ptr<cv::StereoBM> matcher = sp::create_default_stereo_matcher();
         cv::Mat disparity_map_small, disparity_map_large;
@@ -289,7 +289,7 @@ namespace sp
         disparity_map.convertTo(disparity_map, CV_16S, 16.0);
 
         // Filter remaining speckles
-        cv::filterSpeckles(disparity_map, -16, 300, 16);
+        cv::filterSpeckles(disparity_map, -16, 200, 16);
 
         // Apply median filter to smooth disparity map
         cv::medianBlur(disparity_map, disparity_map, 3);
