@@ -191,6 +191,7 @@ int main(int argc, char **argv)
                       proj_mat_L,
                       proj_mat_R,
                       Q,
+                      cv::CALIB_ZERO_DISPARITY,
                       1);
 
     // Compute the undistortion and rectification maps for left and right camera frames
