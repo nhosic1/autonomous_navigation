@@ -79,17 +79,17 @@ private:
 
         // Compute the arithmetic average of camera matrices
         cv::Mat camera_matrix = (camera_matrix_L_ + camera_matrix_R_) / 2.0;
-        std::vector<cv::Point3f> points_3D = sp::compute_3D_points(disparity_map, camera_matrix, std::abs(T_.at<double>(0)));
+        std::vector<cv::Point3f> points_3D = sp::compute_3D_points(disparity_map, camera_matrix_L_, std::abs(T_.at<double>(0)));
         cv::Point3f closest_point(0.0f, 0.0f, std::numeric_limits<float>::max());
         find_closest_point(points_3D, closest_point);
 
-        std::vector<cv::Point2f> points2D;
-        std::vector<cv::Point3f> points3D;
-        points3D.push_back(closest_point);
-        cv::projectPoints(points3D, cv::Mat::zeros(3, 1, CV_64F), cv::Mat::zeros(3, 1, CV_64F), camera_matrix_L_, dist_coeffs_L_, points2D);
+        std::vector<cv::Point2f> proj_points_2D;
+        std::vector<cv::Point3f> proj_points_3D;
+        proj_points_3D.push_back(closest_point);
+        cv::projectPoints(proj_points_3D, cv::Mat::zeros(3, 1, CV_64F), cv::Mat::zeros(3, 1, CV_64F), camera_matrix_L_, dist_coeffs_L_, proj_points_2D);
 
         callback_count_++;
-        sp::visualize_live_disparity_map(disparity_map, cv::Point2i(static_cast<int>(points2D[0].x), static_cast<int>(points2D[0].y)), closest_point);
+        sp::visualize_live_disparity_map(disparity_map, cv::Point2i(static_cast<int>(proj_points_2D[0].x), static_cast<int>(proj_points_2D[0].y)), closest_point);
 
         bool snapshot = this->get_parameter("snapshot").as_bool();
         if (snapshot == true)
