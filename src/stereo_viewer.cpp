@@ -44,7 +44,8 @@ public:
         if (rectify_)
         {
             // Load params for stereo camera
-            sp::load_stereo_camera_parameters(stereo_camera_params_path, camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, T_); 
+            cv::Mat T;
+            sp::load_stereo_camera_parameters(stereo_camera_params_path, camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, T); 
         }
         
         // Create subscribers for left and right stereo image topics
@@ -159,7 +160,6 @@ private:
     // Stereo camera params
     cv::Mat camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_;
     cv::Mat camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_;
-    cv::Mat T_;
 };
 
 int main(int argc, char **argv)
