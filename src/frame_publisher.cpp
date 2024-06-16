@@ -49,10 +49,10 @@ public:
 
         int allocated_buffer_count = allocator_->buffers(stream_).size();
         RCLCPP_INFO(this->get_logger(), "Allocated buffers: %d", allocated_buffer_count);
-        
+
         long min_frame_duration = 25000; // microseconds
         long max_frame_duration = 25000; // microseconds
-        
+
         for (const std::unique_ptr<libcamera::FrameBuffer> &buffer : allocator_->buffers(stream_))
         {
             std::unique_ptr<libcamera::Request> request = camera_->createRequest();
@@ -127,7 +127,7 @@ private:
             const libcamera::StreamConfiguration &stream_cfg = stream->configuration();
 
             auto msg_img = sensor_msgs::msg::Image();
-            
+
             if (stream_cfg.pixelFormat.fourcc() == formats::RGB888.fourcc())
             {
                 msg_img.header = hdr;

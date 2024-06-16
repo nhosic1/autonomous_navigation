@@ -189,8 +189,8 @@ namespace sp
         matcher->setNumDisparities(NUM_DISPARITIES);
         matcher->setBlockSize(11);
         matcher->setMinDisparity(MIN_DISPARITY);
-        matcher->setUniquenessRatio(10); 
-        matcher->setTextureThreshold(30); 
+        matcher->setUniquenessRatio(10);
+        matcher->setTextureThreshold(30);
         matcher->setSpeckleRange(10);
         matcher->setSpeckleWindowSize(200);
         // matcher->setPreFilterType(cv::StereoBM::PREFILTER_NORMALIZED_RESPONSE);

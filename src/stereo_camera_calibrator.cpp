@@ -139,7 +139,8 @@ int main(int argc, char **argv)
     double mean_error_L = 0.0;
     double mean_error_R = 0.0;
 
-    for (size_t i = 0; i < all_corners_3D.size(); i++) {
+    for (size_t i = 0; i < all_corners_3D.size(); i++)
+    {
         std::vector<cv::Point2f> proj_corners_L, proj_corners_R;
         cv::projectPoints(all_corners_3D[i], R_L[i], T_L[i], camera_matrix_L, dist_coeffs_L, proj_corners_L);
         cv::projectPoints(all_corners_3D[i], R_R[i], T_R[i], camera_matrix_R, dist_coeffs_R, proj_corners_R);
@@ -147,7 +148,7 @@ int main(int argc, char **argv)
         double error_L = norm(all_corners_2D_L[i], proj_corners_L, cv::NORM_L2) / proj_corners_L.size();
         double error_R = norm(all_corners_2D_R[i], proj_corners_R, cv::NORM_L2) / proj_corners_R.size();
         mean_error_L += error_L;
-        mean_error_R += error_R; 
+        mean_error_R += error_R;
     }
 
     mean_error_L /= all_corners_3D.size();
