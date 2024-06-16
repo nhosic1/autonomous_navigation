@@ -65,6 +65,9 @@ public:
             // Set frame rate to 40 Hz
             request->controls().set(controls::FrameDurationLimits, Span<const std::int64_t, 2>({min_frame_duration, max_frame_duration}));
 
+            // Disable autofocus
+            request->controls().set(controls::AfMode, controls::AfModeManual);
+
             requests_.push_back(std::move(request));
         }
 
