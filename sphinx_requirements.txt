@@ -3,3 +3,4 @@ sphinx-rtd-theme==2.0.0
 docutils<19.0
 sphinx-needs==2.0.0
 sphinxcontrib-plantuml==0.28
+esbonio==0.12.0
