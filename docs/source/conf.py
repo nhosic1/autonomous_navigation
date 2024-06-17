@@ -12,7 +12,7 @@ from sphinx_needs.api.configuration import add_warning
 sys.path.insert(0, os.path.abspath("../.."))
 
 
-project = 'Autonomous Driving'
+project = 'Autonomous Navigation'
 copyright = '2024, Nedim Hosic'
 author = 'Nedim Hosic'
 release = '0'
