@@ -56,3 +56,10 @@ System Requirements
 
    The system must ensure that the vehicle moves along an optimal trajectory that minimizes the travelled distance while avoiding obstacles in a 
    known environment.
+
+.. req:: User Feedback and Monitoring
+   :id: REQ_1719070003
+   :status: open
+
+   The system must provide real-time user feedback on the vehicle's status, including velocity, position, and potential system issues.
+   This feedback should be accessible through a user interface or API.
