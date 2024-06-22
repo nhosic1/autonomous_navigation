@@ -11,6 +11,7 @@ Welcome to Autonomous Navigation documentation!
    userdoc/environment_setup/environment_setup
    userdoc/system_architecture/system_architecture
    userdoc/system_components/system_components
+   userdoc/system_requirements/system_requirements
    userdoc/system_testing/system_testing
 
 
