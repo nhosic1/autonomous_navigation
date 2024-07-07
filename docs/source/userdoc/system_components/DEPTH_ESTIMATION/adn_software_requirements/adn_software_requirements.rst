@@ -14,27 +14,29 @@ Software Requirements
    :status: open
 
    The component must be able to calibrate the stereo camera by computing camera matrices, distortion coefficients, relative rotation and 
-   translation between cameras, and rectification and undistortion maps. The calibration accuracy must be within 0.5 pixels for reprojection error.
-
-
-.. req:: Disparity Map
-   :id: REQ_1719139720
-   :status: open
-
-   The component must compute a disparity map for two synchronized frames. The disparity map must have an average absolute error (AAE) of less than 
-   1 pixel and an end point error (EPE) of less than 2 pixels, with no unidentified objects or invalid disparities. Disparity map accuracy should be 
-   validated using one of the public stereo datasets, e.g. Middlebury dataset.
-
-.. req:: 3D Environment Map
-   :id: REQ_1719139935
-   :status: open
-
-   The component must compute a 3D map from a disparity map and camera parameters. The 3D map must have a maximum reprojection error of less than 
-   3 cm in point-to-point distance when compared to ground truth for objects within a range of 0.1 to 10 meters.
+   translation between cameras, and rectification and undistortion maps. The mean reprojection error for both cameras must not exceed 0.5 pixels.
 
 .. req:: Image Preprocessing
    :id: REQ_1719140161
    :status: open
 
    The system must perform necessary preprocessing steps such as rectification and undistortion of the stereo images to ensure that epipolar lines are 
-   aligned on the stereo images.
+   horizontally aligned and that the optical centers of each camera have the same pixel coordinates in the rectified images.
+
+.. req:: Disparity Map
+   :id: REQ_1719139720
+   :status: open
+
+   The component must compute a disparity map for two synchronized frames. 
+   
+   The disparity map must have a mean absolute error (MAE) of less than 2 pixel and a root mean square error (RMSE) of less than 3 pixels, for valid 
+   disparities. Disparity map accuracy should be validated using one of the public stereo datasets, e.g. Middlebury dataset.
+
+   The disparity map must contain enough valid disparities to recognize objects within a range of 0.5 to 4 meters. The exceptions are cases that are
+   genarally difficult to detect with cameras, e.g. textureless regions, low lighting conditions and repetative textures.
+
+.. req:: 3D Environment Map
+   :id: REQ_1719139935
+   :status: open
+
+   The component must compute a 3D map from a disparity map and camera parameters.
