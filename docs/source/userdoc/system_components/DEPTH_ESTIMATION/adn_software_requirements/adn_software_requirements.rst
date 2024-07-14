@@ -41,3 +41,22 @@ Software Requirements
    
    The component must compute a 3D map from a disparity map and camera parameters.
    
+.. req:: Ultrasonic Sensor Integration
+   :id: REQ_1720960001
+   :status: open
+
+   The component must integrate a minimum of six ultrasonic sensors to provide additional depth information. Three sensors should be placed at the front 
+   and three at the back of the vehicle. More sensors are recommended to improve coverage and accuracy.
+
+   The ultrasonic sensors must have a range of 0.1 meters to 3 meters and a field of view of at least 15 degrees. The data from these sensors must be 
+   captured at a minimum rate of 20 Hz and synchronized with the stereo camera frames within 0.03 seconds.
+
+.. req:: Sensor Fusion
+   :id: REQ_1720960203
+   :status: open
+
+   The system must perform sensor fusion by combining the depth information from stereo camera disparity maps and ultrasonic sensor data to produce a more 
+   accurate and robust depth estimation. 
+
+   The fusion algorithm must utilize the strengths of both sensor types: the precise, long-range measurements from stereo vision and the reliable short-range 
+   measurements from ultrasonic sensors.
