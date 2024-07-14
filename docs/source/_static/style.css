@@ -3,3 +3,7 @@
     max-height: none;
     height: 100vh;
 }
+
+span.needs_style {
+    display: none;
+}

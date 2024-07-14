@@ -1,5 +1,5 @@
-Welcome to Autonomous Driving documentation!
-============================================
+Welcome to Autonomous Navigation documentation!
+=================================================
 
 .. toctree::
    :maxdepth: 2
@@ -11,6 +11,7 @@ Welcome to Autonomous Driving documentation!
    userdoc/environment_setup/environment_setup
    userdoc/system_architecture/system_architecture
    userdoc/system_components/system_components
+   userdoc/system_requirements/system_requirements
    userdoc/system_testing/system_testing
 
 

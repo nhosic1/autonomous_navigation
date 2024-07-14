@@ -8,6 +8,6 @@ System Components
    :caption: Contents:
 
    DEPTH_ESTIMATION/adn_depth_estimation
-   VISUAL_ODOMETRY/adn_visual_odometry
+   LOCALIZATION_AND_MAPPING/adn_localization
    PATH_PLANNING/adn_path_planning
    MOTION_CONTROL/adn_motion_control
