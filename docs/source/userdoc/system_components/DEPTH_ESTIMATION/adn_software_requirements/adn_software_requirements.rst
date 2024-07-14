@@ -55,8 +55,11 @@ Software Requirements
    :id: REQ_1720960203
    :status: open
 
-   The system must perform sensor fusion by combining the depth information from stereo camera disparity maps and ultrasonic sensor data to produce a more 
-   accurate and robust depth estimation. 
+   The system must perform fusion of the depth information from stereo camera disparity maps and ultrasonic sensor data to produce a more 
+   accurate and robust depth estimation by leveraging the strengths of each sensor.
 
-   The fusion algorithm must utilize the strengths of both sensor types: the precise, long-range measurements from stereo vision and the reliable short-range 
-   measurements from ultrasonic sensors.
+   Ultrasonic sensors provide reliable short-range measurements, typically unaffected by ambient light conditions or the texture of objects, but have limited
+   coverage due to narrow field of view.
+
+   Stereo cameras provide precise long-range measurements and detailed object structure data, but perform poorly with textureless regions, low lighting 
+   conditions and repetative textures.
