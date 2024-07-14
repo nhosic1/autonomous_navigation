@@ -4,7 +4,7 @@ Software Requirements
 
 .. req:: Camera Pose Estimation
    :id: REQ_1720394989
-   :status: open
+   :status: in progress
 
    The component must estimate the 6-DoF (Degrees of Freedom) pose of the camera by analyzing sequential stereo camera frames.
 
@@ -36,7 +36,7 @@ Software Requirements
 
 .. req:: Environment Mapping
    :id: REQ_1720959113
-   :status: open
+   :status: in progress
 
    The component must perform continuous 3D mapping of the environment using stereo camera frames (:need:`REQ_1719139935`), 
    simultaneously with the pose estimation. 

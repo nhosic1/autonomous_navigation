@@ -69,7 +69,7 @@ System Requirements
 
 .. req:: Environment Mapping
    :id: REQ_1719060958
-   :status: open
+   :status: in progress
 
    The system must create and actively update a 3D map of an unknown environment from detected objects in real-time while moving towards the goal location.
 
