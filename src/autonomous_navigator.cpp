@@ -13,10 +13,10 @@
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> approximate_time_policy;
 typedef message_filters::Synchronizer<approximate_time_policy> approximate_time_synchronizer;
 
-class StereoDepthEstimator : public rclcpp::Node
+class AutonomousNavigator : public rclcpp::Node
 {
 public:
-    StereoDepthEstimator() : Node("stereo_depth_estimator")
+    AutonomousNavigator() : Node("autonomous_navigator")
     {
         // Create a timer to check FPS
         timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]()
@@ -46,7 +46,7 @@ public:
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
         time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 30000000)); // 0.03 sec
-        time_sync_->registerCallback(std::bind(&StereoDepthEstimator::imageCallback, this, std::placeholders::_1, std::placeholders::_2));
+        time_sync_->registerCallback(std::bind(&AutonomousNavigator::imageCallback, this, std::placeholders::_1, std::placeholders::_2));
     }
 
 private:
@@ -195,7 +195,7 @@ int main(int argc, char **argv)
 
     // Initialize ROS 2 node
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<StereoDepthEstimator>();
+    auto node = std::make_shared<AutonomousNavigator>();
 
     // Spin the node
     rclcpp::spin(node);
