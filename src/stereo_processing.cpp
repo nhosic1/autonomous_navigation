@@ -179,7 +179,7 @@ namespace sp
         mask = (disparity_map < MIN_DISPARITY * 16);
 
         // Apply the mask to the disparity map
-        int replacement_disparity = MIN_DISPARITY;
+        int replacement_disparity = 0;
         output_disparity_map.setTo(replacement_disparity * 16, mask);
     }
 
@@ -247,7 +247,7 @@ namespace sp
         cv::cvtColor(right_img, right_gray_img, cv::COLOR_BGR2GRAY);
 
         const int small_block_size = 7;
-        const int large_block_size = 41;
+        const int large_block_size = 51;
 
         cv::Ptr<cv::StereoBM> matcher = sp::create_default_stereo_matcher();
         cv::Mat disparity_map_small, disparity_map_large;
@@ -306,7 +306,7 @@ namespace sp
     }
 
     // Expects disparity_map data type to be CV_16SC1
-    void visualize_live_disparity_map(const cv::Mat &disparity_map, const cv::Point2i &closest_point_2D, const cv::Point3f &closest_point_3D)
+    void visualize_live_disparity_map(const cv::Mat &disparity_map, int image_width, const cv::Point2i &closest_point_2D, const cv::Point3d &closest_point_3D)
     {
         cv::Mat formatted_disparity_map;
         format_disp_map_for_visualization(disparity_map, formatted_disparity_map, 1.0);
@@ -324,22 +324,21 @@ namespace sp
             std::string text = "(" + ss_x.str() + ", " + ss_y.str() + ", " + ss_z.str() + ")";
 
             // Define the font parameters for the point text
-            int fontFace = cv::FONT_HERSHEY_SIMPLEX; // Font type
-            double fontScale = 0.9;                  // Font scale factor
+            int font_face = cv::FONT_HERSHEY_SIMPLEX; // Font type
+            float font_scale = 0.9;                  // Font scale factor
             cv::Scalar color(255, 0, 255);           // Text color (BGR format)
             int thickness = 2;                       // Thickness of the text
 
             // Calculate the size of the text bounding box
             int baseline = 0;
-            cv::Size textSize = cv::getTextSize(text, fontFace, fontScale, thickness, &baseline);
+            cv::Size textSize = cv::getTextSize(text, font_face, font_scale, thickness, &baseline);
             cv::Point org(closest_point_2D.x - textSize.width / 2, closest_point_2D.y + textSize.height + 25); // Position of the text (below the reprojected point)
 
-            cv::putText(formatted_disparity_map, text, org, fontFace, fontScale, color, thickness);
+            cv::putText(formatted_disparity_map, text, org, font_face, font_scale, color, thickness);
         }
 
         cv::Mat resized_disparity_map;
-        int max_image_width = 800;
-        float scale = static_cast<float>(max_image_width) / formatted_disparity_map.cols;
+        float scale = static_cast<float>(image_width) / formatted_disparity_map.cols;
         cv::resize(formatted_disparity_map, resized_disparity_map, cv::Size(), scale, scale);
 
         // Display the colored disparity map
@@ -347,39 +346,110 @@ namespace sp
         cv::waitKey(1); // Wait for a key press (1 millisecond)
     }
 
-    std::vector<cv::Point3f> compute_3D_points(const cv::Mat &disparity_map, const cv::Mat &camera_matrix, float baseline)
+    // Output unit: [mm]
+    // Output 3D points are represented in left camera's coordinate system
+    // Output 2D points are pixels in left image that correspond to 3D points
+    void compute_3D_points_from_disparity(const cv::Mat &disparity_map, const cv::Mat &Q, std::vector<cv::Point3d> &points_3D, std::vector<cv::Point2d> &points_2D, double &average_depth)
     {
-        float fx = camera_matrix.at<double>(0, 0); // unit: [mm]
-        float fy = camera_matrix.at<double>(1, 1); // unit: [mm]
-        float cx = camera_matrix.at<double>(0, 2); // unit: [px]
-        float cy = camera_matrix.at<double>(1, 2); // unit: [px]
+        double f = Q.at<double>(2, 3); // unit: [mm]
+        double cx = -Q.at<double>(0, 3); // unit: [px]
+        double cy = -Q.at<double>(1, 3); // unit: [px]
+        double Tx = 1.0 / Q.at<double>(3, 2); // unit: [mm] (value must be positive)
+        double total_depth = 0.0;
 
         // Compute 3D points from disparity map
-        std::vector<cv::Point3f> points_3D;
         for (int y = 0; y < disparity_map.rows; y++)
         {
             for (int x = 0; x < disparity_map.cols; x++)
             {
                 int16_t disparity_scaled = disparity_map.at<int16_t>(y, x);
-                float disparity = disparity_scaled / 16.0f;
+                double disparity = disparity_scaled / 16.0;
                 if (disparity > MIN_DISPARITY)
                 {
                     // Calculate 3D point (X, Y, Z) using the disparity and camera parameters
-                    // 3D points are  represented in the left camera coordinate system.
-                    float Z = (fx * baseline) / disparity;
-                    float X = (x - cx) * Z / fx;
-                    float Y = (y - cy) * Z / fy;
+                    double Z = (f * Tx) / disparity;
+                    double X = (x - cx) * Z / f;
+                    double Y = (y - cy) * Z / f;
 
-                    // Set the 3D point in the points_3D matrix
-                    points_3D.push_back(cv::Point3f(X, Y, Z));
+                    points_3D.push_back(cv::Point3d(X, Y, Z));
+                    points_2D.push_back(cv::Point2d(x, y));
+                    total_depth += Z;
+                }
+            }
+        }
+        average_depth = total_depth / points_3D.size();
+    }
+
+    // Output unit: [mm]
+    // Output 3D points are represented in left camera's coordinate system
+    // Output 2D points are pixels in left image that correspond to 3D points
+    bool compute_3D_points_from_features(const cv::Ptr<cv::DescriptorMatcher> &matcher, const cv::Mat &P_L, const std::vector<cv::KeyPoint> &keypoints_L, const cv::Mat &descriptors_L, const cv::Mat &P_R, const std::vector<cv::KeyPoint> &keypoints_R, const cv::Mat &descriptors_R, std::vector<cv::Point3d> &points_3D, std::vector<cv::Point2d> &points_2D, double &average_depth)
+    {
+        std::vector<std::vector<cv::DMatch>> matches;
+
+        // Find matches
+        if (!descriptors_L.empty() && !descriptors_R.empty())
+        {
+            matcher->knnMatch(descriptors_L, descriptors_R, matches, 2);
+        }
+        else 
+        {
+            return false;
+        }
+
+        // Filter matches using Lowe's ratio test
+        const float ratio_threshold = 0.5f;
+        std::vector<cv::DMatch> good_matches;
+        std::set<int> unique_train_ids;
+        std::vector<cv::Point2f> points_L, points_R;
+
+        for (size_t i = 0; i < matches.size(); i++)
+        {
+            if ((matches[i].size() == 1) || (matches[i].size() > 1 && matches[i][0].distance < ratio_threshold * matches[i][1].distance))
+            {
+                cv::Point2f pt_L = keypoints_L[matches[i][0].queryIdx].pt;
+                cv::Point2f pt_R = keypoints_R[matches[i][0].trainIdx].pt;
+
+                // Check if y-coordinates are approximately equal and if match is 1-to-1
+                if ((std::abs(pt_L.y - pt_R.y) <= 1.0) && unique_train_ids.insert(matches[i][0].trainIdx).second) {
+                    points_L.push_back(pt_L);
+                    points_R.push_back(pt_R);
+                    points_2D.push_back(cv::Point2d(pt_L.x, pt_L.y));
                 }
             }
         }
 
-        return points_3D; // unit: [mm]
+        // Triangulate points
+        cv::Mat points_4D;
+        if (!points_L.empty() && !points_R.empty())
+        {
+            // All input data should be of float type in order for cv::triangulatePoints() to work.
+            cv::Mat P_L_f, P_R_f;
+            P_L.convertTo(P_L_f, CV_32F);
+            P_R.convertTo(P_R_f, CV_32F);
+            cv::triangulatePoints(P_L_f, P_R_f, points_L, points_R, points_4D);
+        }
+        else 
+        {
+            return false;
+        }
+
+        double total_depth = 0.0;
+
+        // Normalize homogeneous coordinates
+        for (int i = 0; i < points_4D.cols; i++) {
+            cv::Mat x = points_4D.col(i);
+            x /= x.at<float>(3);
+            points_3D.push_back(cv::Point3d(x.at<float>(0), x.at<float>(1), x.at<float>(2)));
+            total_depth += static_cast<double>(x.at<float>(2));
+        }
+
+        average_depth = total_depth / points_3D.size();
+
+        return true;
     }
 
-    void load_stereo_camera_parameters(const std::string &file_path, cv::Mat &camera_matrix_L, cv::Mat &dist_coeffs_L, cv::Mat &map_1_L, cv::Mat &map_2_L, cv::Mat &camera_matrix_R, cv::Mat &dist_coeffs_R, cv::Mat &map_1_R, cv::Mat &map_2_R, cv::Mat &T)
+    void load_stereo_camera_parameters(const std::string &file_path, cv::Mat &camera_matrix_L, cv::Mat &dist_coeffs_L, cv::Mat &map_1_L, cv::Mat &map_2_L, cv::Mat &P_L, cv::Mat &camera_matrix_R, cv::Mat &dist_coeffs_R, cv::Mat &map_1_R, cv::Mat &map_2_R, cv::Mat &P_R, cv::Mat &T, cv::Mat &Q)
     {
         cv::FileStorage fs(file_path, cv::FileStorage::READ);
         if (!fs.isOpened())
@@ -411,9 +481,19 @@ namespace sp
         map_2_L.convertTo(map_2_L, CV_16UC1);
         map_2_R.convertTo(map_2_R, CV_16UC1);
 
+        // Load projection matrices
+        fs["P_L"] >> P_L;
+        fs["P_R"] >> P_R;
+        P_L.convertTo(P_L, CV_64F);
+        P_R.convertTo(P_R, CV_64F);
+
         // Load translation vector
         fs["T"] >> T;
         T.convertTo(T, CV_64F);
+
+        // Load disparity-to-depth mapping matrix
+        fs["Q"] >> Q;
+        Q.convertTo(T, CV_64F);
 
         fs.release();
     }

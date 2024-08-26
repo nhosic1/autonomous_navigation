@@ -71,7 +71,7 @@ public:
             requests_.push_back(std::move(request));
         }
 
-        double frame_rate = 1.0 / (static_cast<double>(min_frame_duration) / 1e6);
+        float frame_rate = 1.0 / (static_cast<float>(min_frame_duration) / 1e6);
         RCLCPP_INFO(this->get_logger(), "Frame rate: %.2f Hz", frame_rate);
 
         // Connect processing slot to requestCompleted signal

@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <cmath>
 #include "autonomous_navigation/stereo_processing.hpp"
+#include "autonomous_navigation/localization.hpp"
+#include <typeinfo> 
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> approximate_time_policy;
 typedef message_filters::Synchronizer<approximate_time_policy> approximate_time_synchronizer;
@@ -26,18 +28,19 @@ public:
             // Reset the callback count
             callback_count_ = 0; });
 
-        // Initialize the callback count
-        callback_count_ = 0;
+        // // Initialize LSH descriptor matcher
+        // cv::Ptr<cv::flann::IndexParams> index_params = cv::makePtr<cv::flann::LshIndexParams>(6, 12, 1);
+        // matcher_ = cv::FlannBasedMatcher(index_params);
 
         this->declare_parameter("snapshot", false);
         this->declare_parameter("data_folder", "");
 
         std::string package_name = "autonomous_navigation";
         std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
-        std::string stereo_camera_params_path = package_share_directory + "/config/stereo_camera_params.yaml";
+        std::string stereo_camera_params_path = package_share_directory + "/config/sim_stereo_camera_params.yaml";
 
         // Load params for stereo camera
-        sp::load_stereo_camera_parameters(stereo_camera_params_path, camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, T_);
+        sp::load_stereo_camera_parameters(stereo_camera_params_path, camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, P_L_, camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, P_R_, T_, Q_);
 
         // Create subscribers for left and right stereo image topics
         left_subscriber_.subscribe(this, "/left_camera/image");
@@ -59,8 +62,8 @@ private:
         // Convert ROS2 image messages to cv::Mat objects
         try
         {
-            cv_left_img_ptr = cv_bridge::toCvCopy(left_img_msg_ptr, sensor_msgs::image_encodings::RGB8);
-            cv_right_img_ptr = cv_bridge::toCvCopy(right_img_msg_ptr, sensor_msgs::image_encodings::RGB8);
+            cv_left_img_ptr = cv_bridge::toCvCopy(left_img_msg_ptr);
+            cv_right_img_ptr = cv_bridge::toCvCopy(right_img_msg_ptr);
         }
         catch (cv_bridge::Exception &e)
         {
@@ -72,33 +75,139 @@ private:
         cv::Mat right_img = cv_right_img_ptr->image;
 
         // Undistort and rectify images
-        cv::remap(left_img, left_img, map_1_L_, map_2_L_, cv::INTER_LINEAR);
-        cv::remap(right_img, right_img, map_1_R_, map_2_R_, cv::INTER_LINEAR);
+        if (!map_1_L_.empty() && !map_2_L_.empty())
+        {
+            cv::remap(left_img, left_img, map_1_L_, map_2_L_, cv::INTER_LINEAR);
+        }
+        if (!map_1_R_.empty() && !map_2_R_.empty())
+        {
+            cv::remap(right_img, right_img, map_1_R_, map_2_R_, cv::INTER_LINEAR);
+        }
 
-        cv::Mat disparity_map = sp::compute_disparity_map_with_consistency_check(left_img, right_img, false);
+        std::vector<cv::KeyPoint> keypoints_L, keypoints_R;
+        cv::Mat descriptors_L, descriptors_R;
 
-        // Compute the arithmetic average of camera matrices
-        cv::Mat camera_matrix = (camera_matrix_L_ + camera_matrix_R_) / 2.0;
-        std::vector<cv::Point3f> points_3D = sp::compute_3D_points(disparity_map, camera_matrix_L_, std::abs(T_.at<double>(0)));
-        cv::Point3f closest_point(0.0f, 0.0f, std::numeric_limits<float>::max());
-        find_closest_point(points_3D, closest_point);
+        // Detect keypoints and compute their descriptors
+        orb_->detectAndCompute(left_img, cv::Mat(), keypoints_L, descriptors_L);
+        orb_->detectAndCompute(right_img, cv::Mat(), keypoints_R, descriptors_R);
+        
+        // Compute 3D points
+        std::vector<cv::Point3d> points_3D_stereo;
+        std::vector<cv::Point2d> points_2D_stereo;
+        double average_depth;
 
-        std::vector<cv::Point2f> proj_points_2D;
-        std::vector<cv::Point3f> proj_points_3D;
-        proj_points_3D.push_back(closest_point);
-        cv::projectPoints(proj_points_3D, cv::Mat::zeros(3, 1, CV_64F), cv::Mat::zeros(3, 1, CV_64F), camera_matrix_L_, dist_coeffs_L_, proj_points_2D);
+        // cv::Mat disparity_map = sp::compute_disparity_map_with_consistency_check(left_img, right_img, false);
+        // sp::compute_3D_points_from_disparity(disparity_map, Q_, points_3D_stereo, points_2D_stereo, average_depth);
+
+        bool success = false;
+        success = sp::compute_3D_points_from_features(matcher_, P_L_, keypoints_L, descriptors_L, P_R_, keypoints_R, descriptors_R, points_3D_stereo, points_2D_stereo, average_depth);
+
+        if (!success)
+        {
+            RCLCPP_WARN(this->get_logger(), "Odometry chain is broken (failed to compute 3D points). Reinitializing global pose.");
+            start_vo_ = false;
+
+            // save_snapshots(left_img_prev_, right_img_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+        }
+
+        if (start_vo_)
+        {
+            bool success = false;
+            success = loc::compute_local_pose(camera_matrix_L_, dist_coeffs_L_, matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec_, tvec_);
+
+            if (success)
+            {
+                double keyframe_distance = cv::norm(tvec_);
+
+                // Keyframe slection
+                if ((keyframe_distance / average_depth) > 0.1)
+                {
+                    std::cout << "Keyframe!" << std::endl;
+                    std::cout << tvec_ << std::endl;
+                    // Convert rvec to a rotation matrix
+                    cv::Mat R;
+                    cv::Rodrigues(rvec_, R);
+
+                    // Create current transformation matrix
+                    cv::Mat local_pose = cv::Mat::eye(4, 4, CV_64F);
+                    R.copyTo(local_pose(cv::Rect(0, 0, 3, 3)));
+                    tvec_.copyTo(local_pose(cv::Rect(3, 0, 1, 3)));
+
+                    // Update the global pose
+                    global_pose_ = global_pose_ * local_pose;
+
+                    int x = static_cast<int>(std::round(global_pose_.at<double>(0, 3))); // X coordinate (camera coordinate system)
+                    int y = static_cast<int>(std::round(global_pose_.at<double>(2, 3))); // Z coordinate (camera coordinate system)
+
+                    cv::Point path_point(-x, -y);
+
+                    // Convert the point to image coordinates
+                    cv::Point image_point(origin_.x + path_point.x / 10, origin_.y - path_point.y / 10);
+
+                    // Draw the current point
+                    cv::circle(path_image_, image_point, 3, cv::Scalar(0, 0, 255), -1);
+
+                    // Display the updated trajectory
+                    cv::imshow("Estimated Path", path_image_);
+
+                    // Wait for 100 ms to simulate real-time updates
+                    cv::waitKey(1);
+
+                    // Update class members for next iteration
+                    keypoints_L_prev_ = keypoints_L;
+                    descriptors_L_prev_ = descriptors_L;
+                    points_2D_stereo_prev_ = points_2D_stereo;
+                    points_3D_stereo_prev_ = points_3D_stereo;
+                    rvec_ = cv::Mat::zeros(3, 1, CV_64F);  // No rotation
+                    tvec_ = cv::Mat::zeros(3, 1, CV_64F);  // No translation
+                }
+            }
+            else
+            {
+                RCLCPP_WARN(this->get_logger(), "Odometry chain is broken (failed to compute local pose). Reinitializing global pose.");
+                start_vo_ = false;
+
+                // save_snapshots(left_img_prev_, left_img, left_img_msg_ptr->header.stamp);
+                // save_snapshots(left_img_prev_, right_img_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+            }
+        }
+        else
+        {
+            start_vo_ = true;
+            global_pose_ = cv::Mat::eye(4, 4, CV_64F);
+            path_image_ = cv::Mat(700, 700, CV_8UC3, cv::Scalar(255, 255, 255));
+
+            // Draw the axes
+            cv::line(path_image_, cv::Point(origin_.x, 0), cv::Point(origin_.x, path_image_.rows), cv::Scalar(0, 0, 0), 1);
+            cv::line(path_image_, cv::Point(0, origin_.y), cv::Point(path_image_.cols, origin_.y), cv::Scalar(0, 0, 0), 1);
+
+            // Display the updated trajectory
+            cv::imshow("Estimated Path", path_image_);
+
+            // Wait for 100 ms to simulate real-time updates
+            cv::waitKey(1);
+
+            // Update class members for next iteration
+            keypoints_L_prev_ = keypoints_L;
+            descriptors_L_prev_ = descriptors_L;
+            points_2D_stereo_prev_ = points_2D_stereo;
+            points_3D_stereo_prev_ = points_3D_stereo;
+        }
 
         callback_count_++;
-        sp::visualize_live_disparity_map(disparity_map, cv::Point2i(static_cast<int>(proj_points_2D[0].x), static_cast<int>(proj_points_2D[0].y)), closest_point);
+
+        // Display the updated trajectory
+        cv::imshow("Estimated Path", path_image_);
+        cv::waitKey(1);
 
         bool snapshot = this->get_parameter("snapshot").as_bool();
         if (snapshot == true)
         {
-            save_snapshots(left_img, right_img, left_img_msg_ptr->header.stamp);
+            save_snapshots(left_img, right_img, left_img_msg_ptr->header.stamp, "stereo");
         }
     }
 
-    void save_snapshots(const cv::Mat &left_img, const cv::Mat &right_img, const builtin_interfaces::msg::Time &timestamp)
+    void save_snapshots(const cv::Mat &img_1, const cv::Mat &img_2, const builtin_interfaces::msg::Time &timestamp, std::string prefix = "")
     {
         std::string data_folder_path = this->get_parameter("data_folder").as_string();
         if (data_folder_path.empty())
@@ -108,14 +217,14 @@ private:
         else if (std::filesystem::path(data_folder_path).is_absolute() && std::filesystem::is_directory(data_folder_path))
         {
             std::string timestamp_str = std::to_string(timestamp.sec) + "_" + std::to_string(timestamp.nanosec);
-            std::string left_img_path = data_folder_path + "/left_img_" + timestamp_str + ".png";
-            std::string right_img_path = data_folder_path + "/right_img_" + timestamp_str + ".png";
+            std::string img_1_path = data_folder_path + "/" + prefix + "img_1_" + timestamp_str + ".png";
+            std::string img_2_path = data_folder_path + "/" + prefix + "img_2_" + timestamp_str + ".png";
 
             // Save images in PNG format
-            cv::imwrite(left_img_path, left_img);
-            cv::imwrite(right_img_path, right_img);
+            cv::imwrite(img_1_path, img_1);
+            cv::imwrite(img_2_path, img_2);
 
-            RCLCPP_INFO(this->get_logger(), "Stereo images %s and %s saved in %s", std::filesystem::path(left_img_path).filename().c_str(), std::filesystem::path(right_img_path).filename().c_str(), data_folder_path.c_str());
+            RCLCPP_INFO(this->get_logger(), "Images %s and %s saved in %s", std::filesystem::path(img_1_path).filename().c_str(), std::filesystem::path(img_2_path).filename().c_str(), data_folder_path.c_str());
         }
         else
         {
@@ -124,19 +233,19 @@ private:
         this->set_parameter(rclcpp::Parameter("snapshot", false));
     }
 
-    bool is_path_safe(const std::vector<cv::Point3f> &points, const float &max_depth = 2000)
+    bool is_path_safe(const std::vector<cv::Point3d> &points, const double &max_depth = 2000)
     {
         // Define parameters (unit: [mm])
-        float robot_width = 1300.0;
-        float camera_height = 575.0;
-        float x_offset_compensation = 90.0; // Compensate for the left camera's x-axis offset from the robot's center, which is half of the stereo baseline
-        float side_safety_margin = 250.0;
-        float top_safety_margin = 400.0;
-        float ground_tolerance = 50;
+        double robot_width = 1300.0;
+        double camera_height = 575.0;
+        double x_offset_compensation = 90.0; // Compensate for the left camera's x-axis offset from the robot's center, which is half of the stereo baseline
+        double side_safety_margin = 250.0;
+        double top_safety_margin = 400.0;
+        double ground_tolerance = 50.0;
 
         for (const auto &point : points)
         {
-            // Check if the point is in the robot's way
+            // Check if the point is in robot's way
             if (point.z <= max_depth &&
                 std::abs(point.x + x_offset_compensation) <= (robot_width / 2) + side_safety_margin &&
                 point.y > -top_safety_margin &&
@@ -148,14 +257,14 @@ private:
         return true;
     }
 
-    void find_closest_point(const std::vector<cv::Point3f> &points, cv::Point3f &closest_point)
+    void find_closest_point(const std::vector<cv::Point3d> &points, cv::Point3d &closest_point)
     {
         // Define parameters (unit: [mm])
-        float camera_height = 575.0;
-        float ground_tolerance = 50;
+        double camera_height = 575.0;
+        double ground_tolerance = 50.0;
 
         // Initialize variables to track the closest point
-        float closest_z = std::numeric_limits<float>::max(); // Initialize with a large value
+        double closest_z = std::numeric_limits<double>::max(); // Initialize with a large value
 
         for (const auto &point : points)
         {
@@ -174,24 +283,61 @@ private:
     // Pointer for the Synchronizer
     std::shared_ptr<approximate_time_synchronizer> time_sync_;
 
-    int callback_count_;
-    rclcpp::Time last_reset_;
+    int callback_count_ = 0;
     rclcpp::TimerBase::SharedPtr timer_;
 
     // Stereo camera params
-    cv::Mat camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_;
-    cv::Mat camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_;
+    cv::Mat camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, P_L_;
+    cv::Mat camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, P_R_;
     cv::Mat T_;
+    cv::Mat Q_;
+
+    // ORB detector
+    cv::Ptr<cv::ORB> orb_ = cv::ORB::create(
+        600,                   // nfeatures
+        1.2f,                  // scaleFactor
+        8,                     // nlevels
+        25,                    // edgeThreshold
+        0,                     // firstLevel
+        2,                     // WTA_K
+        cv::ORB::HARRIS_SCORE, // scoreType
+        25,                    // patchSize
+        10                     // fastThreshold
+    );
+
+    // Descriptor matcher
+    cv::Ptr<cv::BFMatcher> matcher_ = cv::BFMatcher::create(cv::NORM_HAMMING);
+
+    // Data from previous iteration
+    std::vector<cv::KeyPoint> keypoints_L_prev_;
+    cv::Mat descriptors_L_prev_;
+    std::vector<cv::Point2d> points_2D_stereo_prev_;
+    std::vector<cv::Point3d> points_3D_stereo_prev_;
+
+    // Global pose
+    cv::Mat global_pose_ = cv::Mat::eye(4, 4, CV_64F);
+    std::vector<cv::Point2d> path_;
+
+    // Initial guess for rotation (rvec) and translation (tvec)
+    cv::Mat rvec_ = cv::Mat::zeros(3, 1, CV_64F);  // No rotation
+    cv::Mat tvec_ = cv::Mat::zeros(3, 1, CV_64F);  // No translation
+
+    // Path image
+    cv::Mat path_image_ = cv::Mat(700, 700, CV_8UC3, cv::Scalar(255, 255, 255));
+    cv::Point origin_ = cv::Point(path_image_.cols / 2, 650);
+
+    bool start_vo_ = false;
 };
 
 int main(int argc, char **argv)
 {
     // Create a named window for visualization
-    cv::namedWindow("Disparity Map", cv::WINDOW_AUTOSIZE);
+    cv::namedWindow("Estimated Path", cv::WINDOW_AUTOSIZE);
 
-    // Window is black by default
-    cv::imshow("Disparity Map", cv::Mat(432, 768, CV_8UC3, cv::Scalar(0, 0, 0)));
-    cv::waitKey(1000);
+    // Window is white by default
+    cv::imshow("Estimated Path", cv::Mat(700, 700, CV_8UC3, cv::Scalar(255, 255, 255)));
+
+    cv::waitKey(10);
 
     // Initialize ROS 2 node
     rclcpp::init(argc, argv);
@@ -204,7 +350,7 @@ int main(int argc, char **argv)
     rclcpp::shutdown();
 
     // Destroy the window when the node exits
-    cv::destroyWindow("Disparity Map");
+    cv::destroyWindow("Estimated Path");
 
     return 0;
 }
