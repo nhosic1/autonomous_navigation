@@ -8,9 +8,9 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <filesystem>
 #include <cmath>
+#include <chrono>
 #include "autonomous_navigation/stereo_processing.hpp"
 #include "autonomous_navigation/localization.hpp"
-#include <typeinfo> 
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> approximate_time_policy;
 typedef message_filters::Synchronizer<approximate_time_policy> approximate_time_synchronizer;
@@ -23,7 +23,7 @@ public:
         // Create a timer to check FPS
         timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]()
                                          {
-            RCLCPP_INFO(this->get_logger(), "FPS = %d", callback_count_);
+            // RCLCPP_INFO(this->get_logger(), "FPS = %d", callback_count_);
 
             // Reset the callback count
             callback_count_ = 0; });
@@ -56,6 +56,8 @@ private:
     // Callback function for synchronized left and right stereo images
     void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr, const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr)
     {
+        auto timestamp = std::chrono::steady_clock::now();
+
         cv_bridge::CvImagePtr cv_left_img_ptr;
         cv_bridge::CvImagePtr cv_right_img_ptr;
 
@@ -90,7 +92,7 @@ private:
         // Detect keypoints and compute their descriptors
         orb_->detectAndCompute(left_img, cv::Mat(), keypoints_L, descriptors_L);
         orb_->detectAndCompute(right_img, cv::Mat(), keypoints_R, descriptors_R);
-        
+
         // Compute 3D points
         std::vector<cv::Point3d> points_3D_stereo;
         std::vector<cv::Point2d> points_2D_stereo;
@@ -106,99 +108,148 @@ private:
         {
             RCLCPP_WARN(this->get_logger(), "Odometry chain is broken (failed to compute 3D points). Reinitializing global pose.");
             start_vo_ = false;
-
-            // save_snapshots(left_img_prev_, right_img_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
         }
 
         if (start_vo_)
-        {
+        {            
             bool success = false;
-            success = loc::compute_local_pose(camera_matrix_L_, dist_coeffs_L_, matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec_, tvec_);
+            cv::Mat rvec_guess = rvec_.clone();
+            cv::Mat tvec_guess = tvec_.clone();
+            success = loc::compute_local_pose(camera_matrix_L_, dist_coeffs_L_, matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec_guess, tvec_guess);
 
             if (success)
             {
-                double keyframe_distance = cv::norm(tvec_);
+                double velocity = 0.5; // unit: [m/s]
 
-                // Keyframe slection
-                if ((keyframe_distance / average_depth) > 0.1)
+                // Calculate time duration from previous frame
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(timestamp - timestamp_prev_);
+                double time_diff = duration.count(); // unit: [ms]
+
+                // Calculate max expected distance
+                double expected_distance = velocity * time_diff; // unit: [mm]
+                double tolerance = 300; // unit: [mm]
+
+                if (std::abs(cv::norm(tvec_) - cv::norm(tvec_guess)) > expected_distance + tolerance)
                 {
-                    std::cout << "Keyframe!" << std::endl;
-                    std::cout << tvec_ << std::endl;
-                    // Convert rvec to a rotation matrix
-                    cv::Mat R;
-                    cv::Rodrigues(rvec_, R);
+                    RCLCPP_WARN(this->get_logger(), "Computed local pose is invalid. Translation magnitude exceeds the expected value.");
+                    std::cout << "time diff [ms]: " << time_diff << std::endl;
+                    std::cout << "expected distance [mm]: " << expected_distance + tolerance << std::endl;
+                    std::cout << "computed distance [mm]: " << std::abs(cv::norm(tvec_) - cv::norm(tvec_guess)) << std::endl;
+                }
+                else
+                {
+                    rvec_ = rvec_guess;
+                    tvec_ = tvec_guess;
+                    double keyframe_distance = cv::norm(tvec_);
 
-                    // Create current transformation matrix
-                    cv::Mat local_pose = cv::Mat::eye(4, 4, CV_64F);
-                    R.copyTo(local_pose(cv::Rect(0, 0, 3, 3)));
-                    tvec_.copyTo(local_pose(cv::Rect(3, 0, 1, 3)));
+                    // Keyframe slection
+                    if ((keyframe_distance / average_depth) > 0.1)
+                    {
+                        std::cout << "Keyframe!" << std::endl;
+                        std::cout << tvec_ << std::endl;
+                        // Convert rvec to a rotation matrix
+                        cv::Mat R;
+                        cv::Rodrigues(rvec_, R);
 
-                    // Update the global pose
-                    global_pose_ = global_pose_ * local_pose;
+                        // Create current transformation matrix
+                        cv::Mat local_pose = cv::Mat::eye(4, 4, CV_64F);
+                        R.copyTo(local_pose(cv::Rect(0, 0, 3, 3)));
+                        tvec_.copyTo(local_pose(cv::Rect(3, 0, 1, 3)));
 
-                    int x = static_cast<int>(std::round(global_pose_.at<double>(0, 3))); // X coordinate (camera coordinate system)
-                    int y = static_cast<int>(std::round(global_pose_.at<double>(2, 3))); // Z coordinate (camera coordinate system)
+                        // Update the global pose
+                        global_pose_ = global_pose_ * local_pose;
 
-                    cv::Point path_point(-x, -y);
+                        double x = global_pose_.at<double>(0, 3); // X coordinate (camera coordinate system)
+                        double z = global_pose_.at<double>(2, 3); // Z coordinate (camera coordinate system)
 
-                    // Convert the point to image coordinates
-                    cv::Point image_point(origin_.x + path_point.x / 10, origin_.y - path_point.y / 10);
+                        // std::cout << "pose (local): " << "x = " << tvec_.at<double>(0) << ", z = " << tvec_.at<double>(2) << std::endl;
+                        // std::cout << "pose (global): " << "x = " << x << ", z = " << z << std::endl;
 
-                    // Draw the current point
-                    cv::circle(path_image_, image_point, 3, cv::Scalar(0, 0, 255), -1);
+                        cv::Point2d path_point(x, z);
+                        path_points_.push_back(path_point);
 
-                    // Display the updated trajectory
-                    cv::imshow("Estimated Path", path_image_);
+                        path_image_.setTo(cv::Scalar(255, 255, 255));
 
-                    // Wait for 100 ms to simulate real-time updates
-                    cv::waitKey(1);
+                        // Convert the point to image coordinates
+                        cv::Point image_point(static_cast<int>(path_point.x * scale_ + origin_.x), static_cast<int>(path_point.y * scale_ + origin_.y));
 
-                    // Update class members for next iteration
-                    keypoints_L_prev_ = keypoints_L;
-                    descriptors_L_prev_ = descriptors_L;
-                    points_2D_stereo_prev_ = points_2D_stereo;
-                    points_3D_stereo_prev_ = points_3D_stereo;
-                    rvec_ = cv::Mat::zeros(3, 1, CV_64F);  // No rotation
-                    tvec_ = cv::Mat::zeros(3, 1, CV_64F);  // No translation
+                        // Check if the path is about to go out of bounds
+                        if (image_point.x < 0 || image_point.x >= path_image_.cols || image_point.y < 0 || image_point.y >= path_image_.rows)
+                        {
+                            // Reduce scale by 20%
+                            scale_ *= 0.8;
+                        }
+
+                        // Draw the axes
+                        cv::line(path_image_, cv::Point(origin_.x, 0), cv::Point(origin_.x, path_image_.rows), cv::Scalar(0, 0, 0), 1);
+                        cv::line(path_image_, cv::Point(0, origin_.y), cv::Point(path_image_.cols, origin_.y), cv::Scalar(0, 0, 0), 1);
+
+                        for (size_t i = 1; i < path_points_.size(); ++i)
+                        {
+                            int x1 = static_cast<int>(path_points_[i - 1].x * scale_ + origin_.x);
+                            int y1 = static_cast<int>(path_points_[i - 1].y * scale_ + origin_.y);
+                            int x2 = static_cast<int>(path_points_[i].x * scale_ + origin_.x);
+                            int y2 = static_cast<int>(path_points_[i].y * scale_ + origin_.y);
+
+                            // Draw the line connecting the points (red)
+                            cv::line(path_image_, cv::Point(x1, y1), cv::Point(x2, y2), CV_RGB(255, 0, 0), 2);
+                        }
+
+                        draw_path_point(path_point, scale_, path_image_);
+
+                        // Update class members for next iteration
+                        keypoints_L_prev_ = keypoints_L;
+                        descriptors_L_prev_ = descriptors_L;
+                        points_2D_stereo_prev_ = points_2D_stereo;
+                        points_3D_stereo_prev_ = points_3D_stereo;
+                        keyframe_L_prev_ = left_img;
+                        keyframe_R_prev_ = right_img;
+                        rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
+                        tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
+                    }
                 }
             }
             else
             {
                 RCLCPP_WARN(this->get_logger(), "Odometry chain is broken (failed to compute local pose). Reinitializing global pose.");
                 start_vo_ = false;
+                path_points_.clear();
 
-                // save_snapshots(left_img_prev_, left_img, left_img_msg_ptr->header.stamp);
-                // save_snapshots(left_img_prev_, right_img_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+                save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
+                save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
             }
         }
         else
         {
             start_vo_ = true;
             global_pose_ = cv::Mat::eye(4, 4, CV_64F);
-            path_image_ = cv::Mat(700, 700, CV_8UC3, cv::Scalar(255, 255, 255));
+            path_image_.setTo(cv::Scalar(255, 255, 255));
 
             // Draw the axes
             cv::line(path_image_, cv::Point(origin_.x, 0), cv::Point(origin_.x, path_image_.rows), cv::Scalar(0, 0, 0), 1);
             cv::line(path_image_, cv::Point(0, origin_.y), cv::Point(path_image_.cols, origin_.y), cv::Scalar(0, 0, 0), 1);
 
-            // Display the updated trajectory
-            cv::imshow("Estimated Path", path_image_);
+            // Add initial position
+            cv::Point path_point(0, 0);
+            path_points_.push_back(path_point);
 
-            // Wait for 100 ms to simulate real-time updates
-            cv::waitKey(1);
+            draw_path_point(path_point, scale_, path_image_);
 
             // Update class members for next iteration
             keypoints_L_prev_ = keypoints_L;
             descriptors_L_prev_ = descriptors_L;
             points_2D_stereo_prev_ = points_2D_stereo;
             points_3D_stereo_prev_ = points_3D_stereo;
+            keyframe_L_prev_ = left_img;
+            keyframe_R_prev_ = right_img;
         }
-
-        callback_count_++;
 
         // Display the updated trajectory
         cv::imshow("Estimated Path", path_image_);
         cv::waitKey(1);
+
+        callback_count_++;
+        timestamp_prev_ = timestamp;
 
         bool snapshot = this->get_parameter("snapshot").as_bool();
         if (snapshot == true)
@@ -276,6 +327,34 @@ private:
         }
     }
 
+    void draw_path_point(const cv::Point2d &path_point, double scale, cv::Mat &path_image)
+    {
+        cv::Point origin = cv::Point(path_image.cols / 2, path_image.rows / 2);
+        cv::Point image_point(static_cast<int>(path_point.x * scale + origin.x), static_cast<int>(path_point.y * scale + origin.y));
+
+        cv::circle(path_image, image_point, 8, cv::Scalar(255, 0, 255), -1);
+
+        // Convert points from [mm] to [m] and set precision to 2 decimal places for text output
+        std::stringstream ss_x, ss_y, ss_z;
+        ss_x << std::fixed << std::setprecision(2) << path_point.x / 1000.0;
+        ss_y << std::fixed << std::setprecision(2) << path_point.y / 1000.0;
+
+        std::string text = "(" + ss_x.str() + ", " + ss_y.str() + ")";
+
+        // Define the font parameters for the point text
+        int font_face = cv::FONT_HERSHEY_SIMPLEX; // Font type
+        float font_scale = 0.8;                   // Font scale factor
+        cv::Scalar color(255, 0, 255);            // Text color (BGR format)
+        int thickness = 2;                        // Thickness of the text
+
+        // Calculate the size of the text bounding box
+        int baseline = 0;
+        cv::Size textSize = cv::getTextSize(text, font_face, font_scale, thickness, &baseline);
+        cv::Point org(image_point.x - textSize.width / 2, image_point.y + textSize.height + 25); // Position of the text (below the reprojected point)
+
+        cv::putText(path_image, text, org, font_face, font_scale, color, thickness);
+    }
+
     // Subscription objects for left and right stereo images
     message_filters::Subscriber<sensor_msgs::msg::Image> left_subscriber_;
     message_filters::Subscriber<sensor_msgs::msg::Image> right_subscriber_;
@@ -294,7 +373,7 @@ private:
 
     // ORB detector
     cv::Ptr<cv::ORB> orb_ = cv::ORB::create(
-        600,                   // nfeatures
+        3000,                  // nfeatures
         1.2f,                  // scaleFactor
         8,                     // nlevels
         25,                    // edgeThreshold
@@ -313,18 +392,23 @@ private:
     cv::Mat descriptors_L_prev_;
     std::vector<cv::Point2d> points_2D_stereo_prev_;
     std::vector<cv::Point3d> points_3D_stereo_prev_;
+    cv::Mat keyframe_L_prev_, keyframe_R_prev_;
 
     // Global pose
     cv::Mat global_pose_ = cv::Mat::eye(4, 4, CV_64F);
-    std::vector<cv::Point2d> path_;
 
     // Initial guess for rotation (rvec) and translation (tvec)
-    cv::Mat rvec_ = cv::Mat::zeros(3, 1, CV_64F);  // No rotation
-    cv::Mat tvec_ = cv::Mat::zeros(3, 1, CV_64F);  // No translation
+    cv::Mat rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
+    cv::Mat tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
 
     // Path image
-    cv::Mat path_image_ = cv::Mat(700, 700, CV_8UC3, cv::Scalar(255, 255, 255));
-    cv::Point origin_ = cv::Point(path_image_.cols / 2, 650);
+    cv::Mat path_image_ = cv::Mat(600, 600, CV_8UC3, cv::Scalar(255, 255, 255));
+    cv::Point origin_ = cv::Point(path_image_.cols / 2, path_image_.rows / 2);
+    std::vector<cv::Point2d> path_points_;
+    double scale_ = 0.1;
+
+    // Keyframe timestamp
+    std::chrono::time_point<std::chrono::steady_clock> timestamp_prev_;
 
     bool start_vo_ = false;
 };
@@ -335,8 +419,7 @@ int main(int argc, char **argv)
     cv::namedWindow("Estimated Path", cv::WINDOW_AUTOSIZE);
 
     // Window is white by default
-    cv::imshow("Estimated Path", cv::Mat(700, 700, CV_8UC3, cv::Scalar(255, 255, 255)));
-
+    cv::imshow("Estimated Path", cv::Mat(600, 600, CV_8UC3, cv::Scalar(255, 255, 255)));
     cv::waitKey(10);
 
     // Initialize ROS 2 node

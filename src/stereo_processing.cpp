@@ -315,7 +315,7 @@ namespace sp
         {
             cv::circle(formatted_disparity_map, closest_point_2D, 8, cv::Scalar(255, 0, 255), -1);
 
-            // Convert points to from [mm] to [m] and set precision to 2 decimal places for text output
+            // Convert points from [mm] to [m] and set precision to 2 decimal places for text output
             std::stringstream ss_x, ss_y, ss_z;
             ss_x << std::fixed << std::setprecision(2) << closest_point_3D.x / 1000.0;
             ss_y << std::fixed << std::setprecision(2) << closest_point_3D.y / 1000.0;
@@ -325,9 +325,9 @@ namespace sp
 
             // Define the font parameters for the point text
             int font_face = cv::FONT_HERSHEY_SIMPLEX; // Font type
-            float font_scale = 0.9;                  // Font scale factor
-            cv::Scalar color(255, 0, 255);           // Text color (BGR format)
-            int thickness = 2;                       // Thickness of the text
+            float font_scale = 0.9;                   // Font scale factor
+            cv::Scalar color(255, 0, 255);            // Text color (BGR format)
+            int thickness = 2;                        // Thickness of the text
 
             // Calculate the size of the text bounding box
             int baseline = 0;
@@ -351,9 +351,9 @@ namespace sp
     // Output 2D points are pixels in left image that correspond to 3D points
     void compute_3D_points_from_disparity(const cv::Mat &disparity_map, const cv::Mat &Q, std::vector<cv::Point3d> &points_3D, std::vector<cv::Point2d> &points_2D, double &average_depth)
     {
-        double f = Q.at<double>(2, 3); // unit: [mm]
-        double cx = -Q.at<double>(0, 3); // unit: [px]
-        double cy = -Q.at<double>(1, 3); // unit: [px]
+        double f = Q.at<double>(2, 3);        // unit: [mm]
+        double cx = -Q.at<double>(0, 3);      // unit: [px]
+        double cy = -Q.at<double>(1, 3);      // unit: [px]
         double Tx = 1.0 / Q.at<double>(3, 2); // unit: [mm] (value must be positive)
         double total_depth = 0.0;
 
@@ -392,14 +392,13 @@ namespace sp
         {
             matcher->knnMatch(descriptors_L, descriptors_R, matches, 2);
         }
-        else 
+        else
         {
             return false;
         }
 
         // Filter matches using Lowe's ratio test
-        const float ratio_threshold = 0.5f;
-        std::vector<cv::DMatch> good_matches;
+        const float ratio_threshold = 0.75f;
         std::set<int> unique_train_ids;
         std::vector<cv::Point2f> points_L, points_R;
 
@@ -410,8 +409,9 @@ namespace sp
                 cv::Point2f pt_L = keypoints_L[matches[i][0].queryIdx].pt;
                 cv::Point2f pt_R = keypoints_R[matches[i][0].trainIdx].pt;
 
-                // Check if y-coordinates are approximately equal and if match is 1-to-1
-                if ((std::abs(pt_L.y - pt_R.y) <= 1.0) && unique_train_ids.insert(matches[i][0].trainIdx).second) {
+                // Check if y-coordinates are approximately equal, minimum stereo disparity is 10 and match is 1-to-1
+                if (std::abs(pt_L.y - pt_R.y) < 1e-6 && (pt_L.x - pt_R.x >= 10.0) && unique_train_ids.insert(matches[i][0].trainIdx).second)
+                {
                     points_L.push_back(pt_L);
                     points_R.push_back(pt_R);
                     points_2D.push_back(cv::Point2d(pt_L.x, pt_L.y));
@@ -429,7 +429,7 @@ namespace sp
             P_R.convertTo(P_R_f, CV_32F);
             cv::triangulatePoints(P_L_f, P_R_f, points_L, points_R, points_4D);
         }
-        else 
+        else
         {
             return false;
         }
@@ -437,7 +437,8 @@ namespace sp
         double total_depth = 0.0;
 
         // Normalize homogeneous coordinates
-        for (int i = 0; i < points_4D.cols; i++) {
+        for (int i = 0; i < points_4D.cols; i++)
+        {
             cv::Mat x = points_4D.col(i);
             x /= x.at<float>(3);
             points_3D.push_back(cv::Point3d(x.at<float>(0), x.at<float>(1), x.at<float>(2)));

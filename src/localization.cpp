@@ -21,7 +21,7 @@ namespace loc
         }
 
         // Filter matches using Lowe's ratio test
-        const float ratio_threshold = 0.5f;
+        const float ratio_threshold = 0.65f;
         std::vector<cv::DMatch> good_matches;
         std::set<int> unique_train_ids;
 
@@ -43,14 +43,14 @@ namespace loc
         for (size_t i = 0; i < points_2D.size(); i++)
         {
             const cv::Point2d &point_2D = points_2D[i];
-            const cv::Point2d point_2D_rounded(std::round(point_2D.x), std::round(point_2D.y));
+            // const cv::Point2d point_2D_rounded(std::round(point_2D.x), std::round(point_2D.y));
             for (size_t j = 0; j < good_matches.size(); j++)
             {
                 const cv::Point2d &point_2D_matched_prev = keypoints_prev[good_matches[j].queryIdx].pt;
-                const cv::Point2d point_2D_matched_prev_rounded(std::round(point_2D_matched_prev.x), std::round(point_2D_matched_prev.y));
+                // const cv::Point2d point_2D_matched_prev_rounded(std::round(point_2D_matched_prev.x), std::round(point_2D_matched_prev.y));
                 const cv::Point2d &point_2D_matched = keypoints[good_matches[j].trainIdx].pt;
                 
-                if (point_2D_rounded == point_2D_matched_prev_rounded)
+                if (point_2D == point_2D_matched_prev)
                 {
                     points_2D_pnp.push_back(point_2D_matched);
                     points_3D_pnp.push_back(points_3D[i]);
