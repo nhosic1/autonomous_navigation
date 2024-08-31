@@ -70,8 +70,9 @@
       <self_collide>false</self_collide>
     </model>
     <include>
-      <uri>file:///home/nedim/.ignition/fuel/fuel.gazebosim.org/openrobotics/models/depot/6</uri>
-      <name>Depot</name>
+      <uri>
+      https://fuel.gazebosim.org/1.0/OpenRobotics/models/Depot
+      </uri>
       <pose>8.05042 0.522623 0 0 -0 0</pose>
     </include>
     <light name='sun' type='directional'>
