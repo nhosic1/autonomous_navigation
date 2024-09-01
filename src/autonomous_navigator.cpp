@@ -147,7 +147,7 @@ private:
                     double keyframe_distance = cv::norm(tvec_);
 
                     // Keyframe slection
-                    if ((keyframe_distance / average_depth) > 0.1)
+                    if ((keyframe_distance / average_depth) > 0.07)
                     {
                         // Convert rvec to a rotation matrix
                         cv::Mat R;
