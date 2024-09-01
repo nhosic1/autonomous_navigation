@@ -28,10 +28,6 @@ public:
             // Reset the callback count
             callback_count_ = 0; });
 
-        // // Initialize LSH descriptor matcher
-        // cv::Ptr<cv::flann::IndexParams> index_params = cv::makePtr<cv::flann::LshIndexParams>(6, 12, 1);
-        // matcher_ = cv::FlannBasedMatcher(index_params);
-
         this->declare_parameter("snapshot", false);
         this->declare_parameter("data_folder", "");
 
@@ -98,16 +94,14 @@ private:
         std::vector<cv::Point2d> points_2D_stereo;
         double average_depth;
 
-        // cv::Mat disparity_map = sp::compute_disparity_map_with_consistency_check(left_img, right_img, false);
-        // sp::compute_3D_points_from_disparity(disparity_map, Q_, points_3D_stereo, points_2D_stereo, average_depth);
-
         bool success = false;
         success = sp::compute_3D_points_from_features(matcher_, P_L_, keypoints_L, descriptors_L, P_R_, keypoints_R, descriptors_R, points_3D_stereo, points_2D_stereo, average_depth);
 
         if (!success)
         {
-            RCLCPP_WARN(this->get_logger(), "Odometry chain is broken (failed to compute 3D points). Reinitializing global pose.");
+            RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute 3D points). Reinitializing global pose.");
             start_vo_ = false;
+            path_points_.clear();
         }
 
         if (start_vo_)
@@ -126,35 +120,48 @@ private:
                 double time_diff = duration.count(); // unit: [ms]
 
                 // Calculate max expected distance
-                double expected_distance = velocity * time_diff; // unit: [mm]
-                double tolerance = 300; // unit: [mm]
+                double max_expected_distance = velocity * time_diff; // unit: [mm]
+                double tolerance = 200; // unit: [mm]
 
-                if (std::abs(cv::norm(tvec_) - cv::norm(tvec_guess)) > expected_distance + tolerance)
+                if (time_diff > 2000)
+                {
+                    RCLCPP_ERROR(this->get_logger(), "Failed to compute local pose within 2 seconds. Reinitializing global pose.");
+                    start_vo_ = false;
+                    path_points_.clear();
+
+                    save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
+                    save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+                }
+                else if (std::abs(cv::norm(tvec_) - cv::norm(tvec_guess)) > max_expected_distance + tolerance)
                 {
                     RCLCPP_WARN(this->get_logger(), "Computed local pose is invalid. Translation magnitude exceeds the expected value.");
-                    std::cout << "time diff [ms]: " << time_diff << std::endl;
-                    std::cout << "expected distance [mm]: " << expected_distance + tolerance << std::endl;
-                    std::cout << "computed distance [mm]: " << std::abs(cv::norm(tvec_) - cv::norm(tvec_guess)) << std::endl;
+
+                    save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
+                    save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
                 }
                 else
                 {
                     rvec_ = rvec_guess;
                     tvec_ = tvec_guess;
+                    timestamp_prev_ = timestamp;
                     double keyframe_distance = cv::norm(tvec_);
 
                     // Keyframe slection
                     if ((keyframe_distance / average_depth) > 0.1)
                     {
-                        std::cout << "Keyframe!" << std::endl;
-                        std::cout << tvec_ << std::endl;
                         // Convert rvec to a rotation matrix
                         cv::Mat R;
                         cv::Rodrigues(rvec_, R);
 
+                        // Invert rotation and translation to represent camera's pose relative to 3D points
+                        cv::Mat R_inv = R.t();
+                        cv::Mat tvec_inv = -R_inv * tvec_;
+
                         // Create current transformation matrix
                         cv::Mat local_pose = cv::Mat::eye(4, 4, CV_64F);
-                        R.copyTo(local_pose(cv::Rect(0, 0, 3, 3)));
-                        tvec_.copyTo(local_pose(cv::Rect(3, 0, 1, 3)));
+                        
+                        R_inv.copyTo(local_pose(cv::Rect(0, 0, 3, 3)));
+                        tvec_inv.copyTo(local_pose(cv::Rect(3, 0, 1, 3)));
 
                         // Update the global pose
                         global_pose_ = global_pose_ * local_pose;
@@ -162,16 +169,13 @@ private:
                         double x = global_pose_.at<double>(0, 3); // X coordinate (camera coordinate system)
                         double z = global_pose_.at<double>(2, 3); // Z coordinate (camera coordinate system)
 
-                        // std::cout << "pose (local): " << "x = " << tvec_.at<double>(0) << ", z = " << tvec_.at<double>(2) << std::endl;
-                        // std::cout << "pose (global): " << "x = " << x << ", z = " << z << std::endl;
-
                         cv::Point2d path_point(x, z);
                         path_points_.push_back(path_point);
 
                         path_image_.setTo(cv::Scalar(255, 255, 255));
 
                         // Convert the point to image coordinates
-                        cv::Point image_point(static_cast<int>(path_point.x * scale_ + origin_.x), static_cast<int>(path_point.y * scale_ + origin_.y));
+                        cv::Point image_point(origin_.x + static_cast<int>(path_point.x * scale_), origin_.y - static_cast<int>(path_point.y * scale_));
 
                         // Check if the path is about to go out of bounds
                         if (image_point.x < 0 || image_point.x >= path_image_.cols || image_point.y < 0 || image_point.y >= path_image_.rows)
@@ -186,10 +190,10 @@ private:
 
                         for (size_t i = 1; i < path_points_.size(); ++i)
                         {
-                            int x1 = static_cast<int>(path_points_[i - 1].x * scale_ + origin_.x);
-                            int y1 = static_cast<int>(path_points_[i - 1].y * scale_ + origin_.y);
-                            int x2 = static_cast<int>(path_points_[i].x * scale_ + origin_.x);
-                            int y2 = static_cast<int>(path_points_[i].y * scale_ + origin_.y);
+                            int x1 = origin_.x + static_cast<int>(path_points_[i - 1].x * scale_);
+                            int y1 = origin_.y - static_cast<int>(path_points_[i - 1].y * scale_);
+                            int x2 = origin_.x + static_cast<int>(path_points_[i].x * scale_);
+                            int y2 = origin_.y - static_cast<int>(path_points_[i].y * scale_);
 
                             // Draw the line connecting the points (red)
                             cv::line(path_image_, cv::Point(x1, y1), cv::Point(x2, y2), CV_RGB(255, 0, 0), 2);
@@ -211,7 +215,7 @@ private:
             }
             else
             {
-                RCLCPP_WARN(this->get_logger(), "Odometry chain is broken (failed to compute local pose). Reinitializing global pose.");
+                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute local pose). Reinitializing global pose.");
                 start_vo_ = false;
                 path_points_.clear();
 
@@ -242,6 +246,9 @@ private:
             points_3D_stereo_prev_ = points_3D_stereo;
             keyframe_L_prev_ = left_img;
             keyframe_R_prev_ = right_img;
+            timestamp_prev_ = timestamp;
+            rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
+            tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
         }
 
         // Display the updated trajectory
@@ -249,7 +256,6 @@ private:
         cv::waitKey(1);
 
         callback_count_++;
-        timestamp_prev_ = timestamp;
 
         bool snapshot = this->get_parameter("snapshot").as_bool();
         if (snapshot == true)
@@ -330,7 +336,7 @@ private:
     void draw_path_point(const cv::Point2d &path_point, double scale, cv::Mat &path_image)
     {
         cv::Point origin = cv::Point(path_image.cols / 2, path_image.rows / 2);
-        cv::Point image_point(static_cast<int>(path_point.x * scale + origin.x), static_cast<int>(path_point.y * scale + origin.y));
+        cv::Point image_point(origin.x + static_cast<int>(path_point.x * scale), origin.y - static_cast<int>(path_point.y * scale));
 
         cv::circle(path_image, image_point, 8, cv::Scalar(255, 0, 255), -1);
 
@@ -380,7 +386,7 @@ private:
         0,                     // firstLevel
         2,                     // WTA_K
         cv::ORB::HARRIS_SCORE, // scoreType
-        25,                    // patchSize
+        31,                    // patchSize
         10                     // fastThreshold
     );
 
