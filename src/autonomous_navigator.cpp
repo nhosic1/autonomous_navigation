@@ -172,34 +172,7 @@ private:
                         cv::Point2d path_point(x, z);
                         path_points_.push_back(path_point);
 
-                        path_image_.setTo(cv::Scalar(255, 255, 255));
-
-                        // Convert the point to image coordinates
-                        cv::Point image_point(origin_.x + static_cast<int>(path_point.x * scale_), origin_.y - static_cast<int>(path_point.y * scale_));
-
-                        // Check if the path is about to go out of bounds
-                        if (image_point.x < 0 || image_point.x >= path_image_.cols || image_point.y < 0 || image_point.y >= path_image_.rows)
-                        {
-                            // Reduce scale by 20%
-                            scale_ *= 0.8;
-                        }
-
-                        // Draw the axes
-                        cv::line(path_image_, cv::Point(origin_.x, 0), cv::Point(origin_.x, path_image_.rows), cv::Scalar(0, 0, 0), 1);
-                        cv::line(path_image_, cv::Point(0, origin_.y), cv::Point(path_image_.cols, origin_.y), cv::Scalar(0, 0, 0), 1);
-
-                        for (size_t i = 1; i < path_points_.size(); ++i)
-                        {
-                            int x1 = origin_.x + static_cast<int>(path_points_[i - 1].x * scale_);
-                            int y1 = origin_.y - static_cast<int>(path_points_[i - 1].y * scale_);
-                            int x2 = origin_.x + static_cast<int>(path_points_[i].x * scale_);
-                            int y2 = origin_.y - static_cast<int>(path_points_[i].y * scale_);
-
-                            // Draw the line connecting the points (red)
-                            cv::line(path_image_, cv::Point(x1, y1), cv::Point(x2, y2), CV_RGB(255, 0, 0), 2);
-                        }
-
-                        draw_path_point(path_point, scale_, path_image_);
+                        loc::draw_path(path_points_, path_image_);
 
                         // Update class members for next iteration
                         keypoints_L_prev_ = keypoints_L;
@@ -227,17 +200,12 @@ private:
         {
             start_vo_ = true;
             global_pose_ = cv::Mat::eye(4, 4, CV_64F);
-            path_image_.setTo(cv::Scalar(255, 255, 255));
-
-            // Draw the axes
-            cv::line(path_image_, cv::Point(origin_.x, 0), cv::Point(origin_.x, path_image_.rows), cv::Scalar(0, 0, 0), 1);
-            cv::line(path_image_, cv::Point(0, origin_.y), cv::Point(path_image_.cols, origin_.y), cv::Scalar(0, 0, 0), 1);
-
+        
             // Add initial position
-            cv::Point path_point(0, 0);
+            cv::Point2d path_point(0.0, 0.0);
             path_points_.push_back(path_point);
 
-            draw_path_point(path_point, scale_, path_image_);
+            loc::draw_path(path_points_, path_image_);
 
             // Update class members for next iteration
             keypoints_L_prev_ = keypoints_L;
@@ -333,34 +301,6 @@ private:
         }
     }
 
-    void draw_path_point(const cv::Point2d &path_point, double scale, cv::Mat &path_image)
-    {
-        cv::Point origin = cv::Point(path_image.cols / 2, path_image.rows / 2);
-        cv::Point image_point(origin.x + static_cast<int>(path_point.x * scale), origin.y - static_cast<int>(path_point.y * scale));
-
-        cv::circle(path_image, image_point, 8, cv::Scalar(255, 0, 255), -1);
-
-        // Convert points from [mm] to [m] and set precision to 2 decimal places for text output
-        std::stringstream ss_x, ss_y, ss_z;
-        ss_x << std::fixed << std::setprecision(2) << path_point.x / 1000.0;
-        ss_y << std::fixed << std::setprecision(2) << path_point.y / 1000.0;
-
-        std::string text = "(" + ss_x.str() + ", " + ss_y.str() + ")";
-
-        // Define the font parameters for the point text
-        int font_face = cv::FONT_HERSHEY_SIMPLEX; // Font type
-        float font_scale = 0.8;                   // Font scale factor
-        cv::Scalar color(255, 0, 255);            // Text color (BGR format)
-        int thickness = 2;                        // Thickness of the text
-
-        // Calculate the size of the text bounding box
-        int baseline = 0;
-        cv::Size textSize = cv::getTextSize(text, font_face, font_scale, thickness, &baseline);
-        cv::Point org(image_point.x - textSize.width / 2, image_point.y + textSize.height + 25); // Position of the text (below the reprojected point)
-
-        cv::putText(path_image, text, org, font_face, font_scale, color, thickness);
-    }
-
     // Subscription objects for left and right stereo images
     message_filters::Subscriber<sensor_msgs::msg::Image> left_subscriber_;
     message_filters::Subscriber<sensor_msgs::msg::Image> right_subscriber_;
@@ -408,10 +348,8 @@ private:
     cv::Mat tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
 
     // Path image
-    cv::Mat path_image_ = cv::Mat(600, 600, CV_8UC3, cv::Scalar(255, 255, 255));
-    cv::Point origin_ = cv::Point(path_image_.cols / 2, path_image_.rows / 2);
+    cv::Mat path_image_;
     std::vector<cv::Point2d> path_points_;
-    double scale_ = 0.1;
 
     // Keyframe timestamp
     std::chrono::time_point<std::chrono::steady_clock> timestamp_prev_;
