@@ -21,7 +21,7 @@ namespace loc
         }
 
         // Filter matches using Lowe's ratio test
-        const float ratio_threshold = 0.65f;
+        const float ratio_threshold = 0.75f;
         std::vector<cv::DMatch> good_matches;
         std::set<int> unique_train_ids;
 
