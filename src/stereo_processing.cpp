@@ -409,8 +409,8 @@ namespace sp
                 cv::Point2f pt_L = keypoints_L[matches[i][0].queryIdx].pt;
                 cv::Point2f pt_R = keypoints_R[matches[i][0].trainIdx].pt;
 
-                // Check if y-coordinates are approximately equal, minimum stereo disparity is 5 and match is 1-to-1
-                if (std::abs(pt_L.y - pt_R.y) < 1e-6 && (pt_L.x - pt_R.x >= 5.0) && unique_train_ids.insert(matches[i][0].trainIdx).second)
+                // Check if y-coordinates are approximately equal, minimum stereo disparity is 7 and match is 1-to-1
+                if (std::abs(pt_L.y - pt_R.y) < 1e-6 && (pt_L.x - pt_R.x >= 7.0) && unique_train_ids.insert(matches[i][0].trainIdx).second)
                 {
                     points_L.push_back(pt_L);
                     points_R.push_back(pt_R);
