@@ -123,67 +123,64 @@ private:
                 double max_expected_distance = velocity * time_diff; // unit: [mm]
                 double tolerance = 200; // unit: [mm]
 
-                if (time_diff > 2000)
-                {
-                    RCLCPP_ERROR(this->get_logger(), "Failed to compute local pose within 2 seconds. Reinitializing global pose.");
-                    start_vo_ = false;
-                    path_points_.clear();
-
-                    save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
-                    save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
-                }
-                else if (std::abs(cv::norm(tvec_) - cv::norm(tvec_guess)) > max_expected_distance + tolerance)
+                if (std::abs(cv::norm(tvec_) - cv::norm(tvec_guess)) > max_expected_distance + tolerance)
                 {
                     RCLCPP_WARN(this->get_logger(), "Computed local pose is invalid. Translation magnitude exceeds the expected value.");
 
                     save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                     save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+
+                    std::cout << "Guess:" << std::endl;
+                    std::cout << "rvec = " << rvec_ << std::endl;
+                    std::cout << "tvec = " << tvec_ << std::endl;
+
+                    std::cout << "Result:" << std::endl;
+                    std::cout << "rvec = " << rvec_guess << std::endl;
+                    std::cout << "tvec = " << tvec_guess << std::endl;
                 }
-                else
+                
+                rvec_ = rvec_guess;
+                tvec_ = tvec_guess;
+                timestamp_prev_ = timestamp;
+                double keyframe_distance = cv::norm(tvec_);
+
+                // Keyframe slection
+                if ((keyframe_distance / average_depth) > 0.07)
                 {
-                    rvec_ = rvec_guess;
-                    tvec_ = tvec_guess;
-                    timestamp_prev_ = timestamp;
-                    double keyframe_distance = cv::norm(tvec_);
+                    // Convert rvec to a rotation matrix
+                    cv::Mat R;
+                    cv::Rodrigues(rvec_, R);
 
-                    // Keyframe slection
-                    if ((keyframe_distance / average_depth) > 0.07)
-                    {
-                        // Convert rvec to a rotation matrix
-                        cv::Mat R;
-                        cv::Rodrigues(rvec_, R);
+                    // Invert rotation and translation to represent camera's pose relative to 3D points
+                    cv::Mat R_inv = R.t();
+                    cv::Mat tvec_inv = -R_inv * tvec_;
 
-                        // Invert rotation and translation to represent camera's pose relative to 3D points
-                        cv::Mat R_inv = R.t();
-                        cv::Mat tvec_inv = -R_inv * tvec_;
+                    // Create current transformation matrix
+                    cv::Mat local_pose = cv::Mat::eye(4, 4, CV_64F);
+                    
+                    R_inv.copyTo(local_pose(cv::Rect(0, 0, 3, 3)));
+                    tvec_inv.copyTo(local_pose(cv::Rect(3, 0, 1, 3)));
 
-                        // Create current transformation matrix
-                        cv::Mat local_pose = cv::Mat::eye(4, 4, CV_64F);
-                        
-                        R_inv.copyTo(local_pose(cv::Rect(0, 0, 3, 3)));
-                        tvec_inv.copyTo(local_pose(cv::Rect(3, 0, 1, 3)));
+                    // Update the global pose
+                    global_pose_ = global_pose_ * local_pose;
 
-                        // Update the global pose
-                        global_pose_ = global_pose_ * local_pose;
+                    double x = global_pose_.at<double>(0, 3); // X coordinate (camera coordinate system)
+                    double z = global_pose_.at<double>(2, 3); // Z coordinate (camera coordinate system)
 
-                        double x = global_pose_.at<double>(0, 3); // X coordinate (camera coordinate system)
-                        double z = global_pose_.at<double>(2, 3); // Z coordinate (camera coordinate system)
+                    cv::Point2d path_point(x, z);
+                    path_points_.push_back(path_point);
 
-                        cv::Point2d path_point(x, z);
-                        path_points_.push_back(path_point);
+                    loc::draw_path(path_points_, path_image_);
 
-                        loc::draw_path(path_points_, path_image_);
-
-                        // Update class members for next iteration
-                        keypoints_L_prev_ = keypoints_L;
-                        descriptors_L_prev_ = descriptors_L;
-                        points_2D_stereo_prev_ = points_2D_stereo;
-                        points_3D_stereo_prev_ = points_3D_stereo;
-                        keyframe_L_prev_ = left_img;
-                        keyframe_R_prev_ = right_img;
-                        rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
-                        tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
-                    }
+                    // Update class members for next iteration
+                    keypoints_L_prev_ = keypoints_L;
+                    descriptors_L_prev_ = descriptors_L;
+                    points_2D_stereo_prev_ = points_2D_stereo;
+                    points_3D_stereo_prev_ = points_3D_stereo;
+                    keyframe_L_prev_ = left_img;
+                    keyframe_R_prev_ = right_img;
+                    rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
+                    tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
                 }
             }
             else
