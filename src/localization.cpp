@@ -36,25 +36,38 @@ namespace loc
                 }
             }
         }
-    
+
+        // Convert 3D points from Point3d to Point3f (required by cv::projectPoints())
+        std::vector<cv::Point3f> points_3D_f;
+        points_3D_f.reserve(points_3D.size());
+        for (const auto& point : points_3D) {
+            points_3D_f.emplace_back(static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z));
+        }
+
+        std::vector<cv::Point2f> points_2D_proj;
+        cv::projectPoints(points_3D_f, rvec, tvec, camera_matrix, dist_coeffs, points_2D_proj);
+
         // Find 3D-2D pairs for PnP algorithm
         std::vector<cv::Point2d> points_2D_pnp;
         std::vector<cv::Point3d> points_3D_pnp;
         for (size_t i = 0; i < points_2D.size(); i++)
         {
             const cv::Point2d &point_2D = points_2D[i];
-            // const cv::Point2d point_2D_rounded(std::round(point_2D.x), std::round(point_2D.y));
             for (size_t j = 0; j < good_matches.size(); j++)
             {
                 const cv::Point2d &point_2D_matched_prev = keypoints_prev[good_matches[j].queryIdx].pt;
-                // const cv::Point2d point_2D_matched_prev_rounded(std::round(point_2D_matched_prev.x), std::round(point_2D_matched_prev.y));
                 const cv::Point2d &point_2D_matched = keypoints[good_matches[j].trainIdx].pt;
                 
                 if (point_2D == point_2D_matched_prev)
                 {
-                    points_2D_pnp.push_back(point_2D_matched);
-                    points_3D_pnp.push_back(points_3D[i]);
-                    break;
+                    // Ignore matched points inconsistent with estimated position
+                    const cv::Point2d point_2D_proj(static_cast<double>(points_2D_proj[i].x), static_cast<double>(points_2D_proj[i].y));;
+                    if (cv::norm(point_2D_matched - point_2D_proj) < 40)
+                    {
+                        points_2D_pnp.push_back(point_2D_matched);
+                        points_3D_pnp.push_back(points_3D[i]);
+                        break;
+                    }
                 }
             }
         }
