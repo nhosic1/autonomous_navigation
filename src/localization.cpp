@@ -21,7 +21,7 @@ namespace loc
         }
     }
 
-    // Accepts FLANN based matcher
+    // Accepts descriptor matcher compatible with ORB descriptors
     // Accepts ORB keypoints and descriptors
     // Accepts 2D and 3D points relative to the previous camera position
     // Outputs rvec and tvec have CV_64F data type
