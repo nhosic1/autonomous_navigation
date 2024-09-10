@@ -142,10 +142,11 @@ private:
                 rvec_ = rvec_guess;
                 tvec_ = tvec_guess;
                 timestamp_prev_ = timestamp;
-                double keyframe_distance = cv::norm(tvec_);
+                double keyframe_distance = cv::norm(tvec_); // unit: [mm]
+                double total_rotation = cv::norm(rvec_); // unit: [rad]
 
                 // Keyframe slection
-                if ((keyframe_distance / average_depth) > 0.07)
+                if ((keyframe_distance / average_depth) > 0.07 || total_rotation > 5 * CV_PI / 180)
                 {
                     // Convert rvec to a rotation matrix
                     cv::Mat R;
