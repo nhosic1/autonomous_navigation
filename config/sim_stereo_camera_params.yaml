@@ -1,0 +1,73 @@
+%YAML:1.0
+---
+camera_matrix_L: !!opencv-matrix
+  rows: 3
+  cols: 3
+  dt: d
+  data: [ 591.3193359375, 0., 384.,
+          0., 591.3193531036377, 216.,
+          0., 0., 1. ]
+dist_coeffs_L: !!opencv-matrix
+  rows: 0
+  cols: 0
+  dt: d
+  data: []
+map_1_L: !!opencv-matrix
+  rows: 0
+  cols: 0
+  dt: "2s"
+  data: []
+map_2_L: !!opencv-matrix
+  rows: 0
+  cols: 0
+  dt: "2s"
+  data: []
+P_L: !!opencv-matrix
+  rows: 3
+  cols: 4
+  dt: d
+  data: [ 591.3193359375, 0., 384., 0.,
+          0., 591.3193531036377, 216., 0.,
+          0., 0., 1., 0. ]
+camera_matrix_R: !!opencv-matrix
+  rows: 3
+  cols: 3
+  dt: d
+  data: [ 591.3193359375, 0., 384.,
+          0., 591.3193531036377, 216.,
+          0., 0., 1. ]
+dist_coeffs_R: !!opencv-matrix
+  rows: 0
+  cols: 0
+  dt: d
+  data: []
+map_1_R: !!opencv-matrix
+  rows: 0
+  cols: 0
+  dt: "2s"
+  data: []
+map_2_R: !!opencv-matrix
+  rows: 0
+  cols: 0
+  dt: "2s"
+  data: []
+P_R: !!opencv-matrix
+  rows: 3
+  cols: 4
+  dt: d
+  data: [ 591.3193359375, 0., 384., -106437.48046875,
+          0., 591.3193531036377, 216., 0.,
+          0., 0., 1., 0. ]
+T: !!opencv-matrix
+  rows: 3
+  cols: 1
+  dt: d
+  data: [ -180., 0., 0. ]
+Q: !!opencv-matrix
+  rows: 4
+  cols: 4
+  dt: d
+  data: [ 1., 0., 0., -384.,
+          0., 1., 0., -216.,
+          0., 0., 0., 591.3193,
+          0., 0., 0.005555556, 0.]
