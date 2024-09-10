@@ -2,6 +2,25 @@
 
 namespace loc
 {
+    void filter_points_with_RANSAC(const std::vector<cv::Point2d> &points_1, const std::vector<cv::Point2d> &points_2, const cv::Mat& camera_matrix, std::vector<cv::Point2d> &points_1_filtered, std::vector<cv::Point2d> &points_2_filtered, double confidence = 0.99, double reproj_threshold = 1.0)
+    {
+        // Use RANSAC to compute the essential matrix and filter outliers
+        std::vector<uchar> inliers_mask;
+        cv::Mat E = cv::findEssentialMat(points_1, points_2, camera_matrix, cv::RANSAC, confidence, reproj_threshold, inliers_mask);
+
+        // Clear the output vectors before filling them
+        points_1_filtered.clear();
+        points_2_filtered.clear();
+
+        // Filter points based on the inliers mask
+        for (size_t i = 0; i < points_1.size(); i++) {
+            if (inliers_mask[i]) {
+                points_1_filtered.push_back(points_1[i]);
+                points_2_filtered.push_back(points_2[i]);
+            }
+        }
+    }
+
     // Accepts FLANN based matcher
     // Accepts ORB keypoints and descriptors
     // Accepts 2D and 3D points relative to the previous camera position
@@ -22,8 +41,8 @@ namespace loc
 
         // Filter matches using Lowe's ratio test
         const float ratio_threshold = 0.75f;
-        std::vector<cv::DMatch> good_matches;
         std::set<int> unique_train_ids;
+        std::vector<cv::Point2d> points_1, points_2;
 
         for (size_t i = 0; i < matches.size(); i++)
         {
@@ -32,10 +51,15 @@ namespace loc
                 // Ensure 1-to-1 matching
                 if (unique_train_ids.insert(matches[i][0].trainIdx).second) 
                 {
-                    good_matches.push_back(matches[i][0]);
+                    points_1.push_back(keypoints_prev[matches[i][0].queryIdx].pt);
+                    points_2.push_back(keypoints[matches[i][0].trainIdx].pt);
                 }
             }
         }
+
+        // Apply RANSAC with essential matrix as fitting model
+        std::vector<cv::Point2d> points_2D_matched_prev, points_2D_matched;
+        filter_points_with_RANSAC(points_1, points_2, camera_matrix, points_2D_matched_prev, points_2D_matched);
 
         // Convert 3D points from Point3d to Point3f (required by cv::projectPoints())
         std::vector<cv::Point3f> points_3D_f;
@@ -53,16 +77,16 @@ namespace loc
         for (size_t i = 0; i < points_2D.size(); i++)
         {
             const cv::Point2d &point_2D = points_2D[i];
-            for (size_t j = 0; j < good_matches.size(); j++)
+            for (size_t j = 0; j < points_2D_matched.size(); j++)
             {
-                const cv::Point2d &point_2D_matched_prev = keypoints_prev[good_matches[j].queryIdx].pt;
-                const cv::Point2d &point_2D_matched = keypoints[good_matches[j].trainIdx].pt;
+                const cv::Point2d &point_2D_matched_prev = points_2D_matched_prev[j];
+                const cv::Point2d &point_2D_matched = points_2D_matched[j];
                 
                 if (point_2D == point_2D_matched_prev)
                 {
                     // Ignore matched points inconsistent with estimated position
                     const cv::Point2d point_2D_proj(static_cast<double>(points_2D_proj[i].x), static_cast<double>(points_2D_proj[i].y));;
-                    if (cv::norm(point_2D_matched - point_2D_proj) < 40)
+                    if (cv::norm(point_2D_matched - point_2D_proj) < 40.0)
                     {
                         points_2D_pnp.push_back(point_2D_matched);
                         points_3D_pnp.push_back(points_3D[i]);
@@ -77,20 +101,16 @@ namespace loc
 
         if (points_2D_pnp.size() >= 4)
         {
-            // Vectors with Point3d and Point2d objects are expected by cv::solvePnPRansac()
-            success = cv::solvePnPRansac(
-                points_3D_pnp,         // 3D points from previous iteration
-                points_2D_pnp,         // Corresponding 2D points from current frame
-                camera_matrix,         // Camera matrix
-                dist_coeffs,           // Distortion coefficients
-                rvec,                  // Output rotation vector
-                tvec,                  // Output translation vector
-                true,                  // initial guess
-                100,                   // Number of RANSAC iterations
-                8.0,                   // Reprojection error threshold
-                0.99,                  // Confidence level
-                cv::noArray(),         // Output inlier mask (optional)
-                cv::SOLVEPNP_ITERATIVE // Flag (algorithm to use).
+            // Vectors with Point3d and Point2d objects are expected by cv::solvePnP()
+            success = cv::solvePnP(
+            points_3D_pnp,         // 3D points from previous iteration
+            points_2D_pnp,         // Corresponding 2D points from current frame
+            camera_matrix,         // Camera matrix
+            dist_coeffs,           // Distortion coefficients
+            rvec,                  // Output rotation vector
+            tvec,                  // Output translation vector
+            true,                  // Use initial guess
+            cv::SOLVEPNP_ITERATIVE // Flag (algorithm to use).
             );
         }
 
