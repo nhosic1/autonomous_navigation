@@ -70,10 +70,19 @@
       <self_collide>false</self_collide>
     </model>
     <include>
-      <uri>
-      https://fuel.gazebosim.org/1.0/OpenRobotics/models/Depot
-      </uri>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Depot</uri>
+      <name>Depot</name>
       <pose>8.05042 0.522623 0 0 -0 0</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/aws_robomaker_warehouse_ShelfD_01</uri>
+      <name>aws_robomaker_warehouse_ShelfD_01</name>
+      <pose>-2.75952 0.306712 0 0 -0 1.81531</pose>
+    </include>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Office Chair</uri>
+      <name>OfficeChair</name>
+      <pose>3.93807 0.293744 0 0 -0 0.709774</pose>
     </include>
     <light name='sun' type='directional'>
       <pose>0 0 10 0 -0 0</pose>
