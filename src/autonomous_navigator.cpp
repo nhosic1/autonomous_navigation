@@ -94,14 +94,22 @@ private:
         std::vector<cv::Point2d> points_2D_stereo;
         double average_depth;
 
-        bool success = false;
-        success = sp::compute_3D_points_from_features(matcher_, P_L_, keypoints_L, descriptors_L, P_R_, keypoints_R, descriptors_R, points_3D_stereo, points_2D_stereo, average_depth);
-
-        if (!success)
+        if (descriptors_L.empty() || descriptors_R.empty())
         {
-            RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute 3D points). Reinitializing global pose.");
+            RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (not enough detected features). Reinitializing global pose.");
             start_vo_ = false;
             path_points_.clear();
+        }
+        else
+        {
+            bool success = sp::compute_3D_points_from_features(matcher_, P_L_, keypoints_L, descriptors_L, P_R_, keypoints_R, descriptors_R, points_3D_stereo, points_2D_stereo, average_depth);
+
+            if (!success)
+            {
+                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute 3D points). Reinitializing global pose.");
+                start_vo_ = false;
+                path_points_.clear();
+            }
         }
 
         if (start_vo_)
