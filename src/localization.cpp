@@ -40,7 +40,7 @@ namespace loc
         }
 
         // Filter matches using Lowe's ratio test
-        const float ratio_threshold = 0.75f;
+        const float ratio_threshold = 0.8f;
         std::set<int> unique_train_ids;
         std::vector<cv::Point2d> points_1, points_2;
 
