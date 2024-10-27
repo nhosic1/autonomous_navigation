@@ -154,7 +154,7 @@ private:
                 double total_rotation = cv::norm(rvec_); // unit: [rad]
 
                 // Keyframe slection
-                if ((keyframe_distance / average_depth) > 0.07 || total_rotation > 5 * CV_PI / 180)
+                if ((((keyframe_distance / average_depth) > 0.07 || total_rotation > 5 * CV_PI / 180)) && keyframe_distance > 50)
                 {
                     // Convert rvec to a rotation matrix
                     cv::Mat R;
