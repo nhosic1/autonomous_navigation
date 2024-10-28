@@ -23,7 +23,7 @@ public:
         // Create a timer to check FPS
         timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]()
                                          {
-            // RCLCPP_INFO(this->get_logger(), "FPS = %d", callback_count_);
+            RCLCPP_INFO(this->get_logger(), "FPS = %d", callback_count_);
 
             // Reset the callback count
             callback_count_ = 0; });
@@ -41,6 +41,10 @@ public:
         // Create subscribers for left and right stereo image topics
         left_subscriber_.subscribe(this, "/left_camera/image");
         right_subscriber_.subscribe(this, "/right_camera/image");
+
+        // Create publisher for images of estimated path
+        std::string topic_name = "~/path_image";
+        AutonomousNavigator::path_img_publisher_ = this->create_publisher<sensor_msgs::msg::Image>(topic_name, 10);
 
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
@@ -96,9 +100,12 @@ private:
 
         if (descriptors_L.empty() || descriptors_R.empty())
         {
-            RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (not enough detected features). Reinitializing global pose.");
+            RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (not enough detected features). Reinitializing...");
             start_vo_ = false;
             path_points_.clear();
+
+            save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
+            save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
         }
         else
         {
@@ -106,9 +113,19 @@ private:
 
             if (!success)
             {
-                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute 3D points). Reinitializing global pose.");
+                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute 3D points). Reinitializing...");
                 start_vo_ = false;
                 path_points_.clear();
+
+                std::cout << "descriptors L:" << descriptors_L.size() << std::endl;
+                std::cout << "descriptors R:" << descriptors_R.size() << std::endl;
+
+                std::cout << "Guess:" << std::endl;
+                std::cout << "rvec = " << rvec_ << std::endl;
+                std::cout << "tvec = " << tvec_ << std::endl;
+
+                save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
+                save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
             }
         }
 
@@ -225,9 +242,13 @@ private:
             tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
         }
 
-        // Display the updated trajectory
-        cv::imshow("Estimated Path", path_image_);
-        cv::waitKey(1);
+        // // Display the updated trajectory
+        // cv::imshow("Estimated Path", path_image_);
+        // cv::waitKey(1);
+
+        // Publish image with estimated path
+        sensor_msgs::msg::Image::SharedPtr msg_img = cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", path_image_).toImageMsg();
+        path_img_publisher_->publish(*msg_img);
 
         callback_count_++;
 
@@ -307,6 +328,9 @@ private:
         }
     }
 
+    // Publishers
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr path_img_publisher_;
+
     // Subscription objects for left and right stereo images
     message_filters::Subscriber<sensor_msgs::msg::Image> left_subscriber_;
     message_filters::Subscriber<sensor_msgs::msg::Image> right_subscriber_;
@@ -365,12 +389,12 @@ private:
 
 int main(int argc, char **argv)
 {
-    // Create a named window for visualization
-    cv::namedWindow("Estimated Path", cv::WINDOW_AUTOSIZE);
+    // // Create a named window for visualization
+    // cv::namedWindow("Estimated Path", cv::WINDOW_AUTOSIZE);
 
-    // Window is white by default
-    cv::imshow("Estimated Path", cv::Mat(600, 600, CV_8UC3, cv::Scalar(255, 255, 255)));
-    cv::waitKey(10);
+    // // Window is white by default
+    // cv::imshow("Estimated Path", cv::Mat(600, 600, CV_8UC3, cv::Scalar(255, 255, 255)));
+    // cv::waitKey(10);
 
     // Initialize ROS 2 node
     rclcpp::init(argc, argv);
@@ -382,8 +406,8 @@ int main(int argc, char **argv)
     // Shutdown ROS 2 node
     rclcpp::shutdown();
 
-    // Destroy the window when the node exits
-    cv::destroyWindow("Estimated Path");
+    // // Destroy the window when the node exits
+    // cv::destroyWindow("Estimated Path");
 
     return 0;
 }
