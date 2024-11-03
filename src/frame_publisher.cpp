@@ -11,14 +11,6 @@ class FramePublisher : public rclcpp::Node
 public:
     FramePublisher() : Node("frame_publisher")
     {
-        // Create a timer to check FPS
-        timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]()
-                                         {
-            RCLCPP_INFO(this->get_logger(), "FPS = %d", callback_count_);
-
-            // Reset the callback count
-            callback_count_ = 0; });
-
         this->declare_parameter("camera_id", 0);
         camera_id_ = this->get_parameter("camera_id").as_int();
         std::string topic_name = "~/camera_" + std::to_string(camera_id_) + "/image";
@@ -159,8 +151,6 @@ private:
             // Publish image message
             image_publisher_->publish(msg_img);
 
-            callback_count_++;
-
             // Unmap the buffer
             munmap(data, buffer_length);
         }
@@ -177,9 +167,6 @@ private:
     FrameBufferAllocator *allocator_;
     std::vector<std::unique_ptr<Request>> requests_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_publisher_;
-
-    int callback_count_ = 0;
-    rclcpp::TimerBase::SharedPtr timer_;
 };
 
 int main(int argc, char **argv)
