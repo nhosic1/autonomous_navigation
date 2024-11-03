@@ -44,6 +44,9 @@ public:
         stream_config.size.height = frame_height;
         stream_config.pixelFormat = formats::RGB888;
 
+        // Rotate image
+        config->orientation = Orientation::Rotate180;
+
         // Validate the config (original config might be modified, if invalid)
         config->validate();
         camera_->configure(config.get());
