@@ -212,11 +212,15 @@ private:
             else
             {
                 RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute local pose). Reinitializing global pose.");
-                start_vo_ = false;
-                path_points_.clear();
 
                 save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                 save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+
+                std::cout << "Guess:" << std::endl;
+                std::cout << "rvec = " << rvec_ << std::endl;
+                std::cout << "tvec = " << tvec_ << std::endl;
+
+                rclcpp::shutdown();
             }
         }
         else
@@ -349,7 +353,7 @@ private:
 
     // ORB detector
     cv::Ptr<cv::ORB> orb_ = cv::ORB::create(
-        3000,                  // nfeatures
+        1000,                  // nfeatures
         1.2f,                  // scaleFactor
         8,                     // nlevels
         25,                    // edgeThreshold
@@ -391,6 +395,8 @@ int main(int argc, char **argv)
 {
     // // Create a named window for visualization
     // cv::namedWindow("Estimated Path", cv::WINDOW_AUTOSIZE);
+    // // Create a named window for visualization
+    // cv::namedWindow("Estimated Path", cv::WINDOW_AUTOSIZE);
 
     // // Window is white by default
     // cv::imshow("Estimated Path", cv::Mat(600, 600, CV_8UC3, cv::Scalar(255, 255, 255)));
@@ -403,9 +409,13 @@ int main(int argc, char **argv)
     // Spin the node
     rclcpp::spin(node);
 
+    // RCLCPP_INFO(this->get_logger(), "Navigation system is running...");
+
     // Shutdown ROS 2 node
     rclcpp::shutdown();
 
+    // // Destroy the window when the node exits
+    // cv::destroyWindow("Estimated Path");
     // // Destroy the window when the node exits
     // cv::destroyWindow("Estimated Path");
 

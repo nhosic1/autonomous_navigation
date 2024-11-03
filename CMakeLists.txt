@@ -53,6 +53,14 @@ target_include_directories(stereo_viewer PUBLIC
 target_compile_features(stereo_viewer PUBLIC c_std_99 cxx_std_17)
 ament_target_dependencies(stereo_viewer rclcpp std_msgs sensor_msgs message_filters cv_bridge OpenCV ament_index_cpp)
 
+add_executable(state_monitor src/state_monitor.cpp)
+target_link_libraries(state_monitor stereo_processing)
+target_include_directories(state_monitor PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(state_monitor PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(state_monitor rclcpp std_msgs sensor_msgs cv_bridge OpenCV)
+
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY worlds DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY models DESTINATION share/${PROJECT_NAME})
@@ -72,6 +80,7 @@ install(TARGETS autonomous_navigator DESTINATION lib/${PROJECT_NAME})
 # install(TARGETS frame_publisher DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_camera_calibrator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_viewer DESTINATION lib/${PROJECT_NAME})
+install(TARGETS state_monitor DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
