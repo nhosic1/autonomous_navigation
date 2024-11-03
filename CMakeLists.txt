@@ -14,8 +14,8 @@ find_package(message_filters REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 
-# find_package(PkgConfig REQUIRED)
-# pkg_check_modules(libcamera REQUIRED libcamera)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(libcamera REQUIRED libcamera)
 
 include_directories(
   include
@@ -35,11 +35,11 @@ target_include_directories(autonomous_navigator PUBLIC
 target_compile_features(autonomous_navigator PUBLIC c_std_99 cxx_std_17)
 ament_target_dependencies(autonomous_navigator rclcpp std_msgs sensor_msgs message_filters cv_bridge OpenCV ament_index_cpp)
 
-# add_executable(frame_publisher src/frame_publisher.cpp)
-# target_include_directories(frame_publisher PUBLIC ${libcamera_INCLUDE_DIRS})
-# target_link_libraries(frame_publisher ${libcamera_LINK_LIBRARIES})
-# target_compile_features(frame_publisher PUBLIC c_std_99 cxx_std_17)
-# ament_target_dependencies(frame_publisher rclcpp sensor_msgs)
+add_executable(frame_publisher src/frame_publisher.cpp)
+target_include_directories(frame_publisher PUBLIC ${libcamera_INCLUDE_DIRS})
+target_link_libraries(frame_publisher ${libcamera_LINK_LIBRARIES})
+target_compile_features(frame_publisher PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(frame_publisher rclcpp sensor_msgs)
 
 add_executable(stereo_camera_calibrator src/stereo_camera_calibrator.cpp)
 target_compile_features(stereo_camera_calibrator PUBLIC c_std_99 cxx_std_17)
@@ -77,7 +77,7 @@ install(TARGETS localization
   RUNTIME DESTINATION bin
 )
 install(TARGETS autonomous_navigator DESTINATION lib/${PROJECT_NAME})
-# install(TARGETS frame_publisher DESTINATION lib/${PROJECT_NAME})
+install(TARGETS frame_publisher DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_camera_calibrator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_viewer DESTINATION lib/${PROJECT_NAME})
 install(TARGETS state_monitor DESTINATION lib/${PROJECT_NAME})
