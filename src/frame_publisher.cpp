@@ -37,7 +37,7 @@ public:
         camera_->acquire();
 
         // Configure the camera with the StillCapture stream
-        std::unique_ptr<CameraConfiguration> config = camera_->generateConfiguration({StreamRole::StillCapture});
+        std::unique_ptr<CameraConfiguration> config = camera_->generateConfiguration({StreamRole::Viewfinder});
         StreamConfiguration &stream_config = config->at(0);
 
         stream_config.size.width = frame_width;
