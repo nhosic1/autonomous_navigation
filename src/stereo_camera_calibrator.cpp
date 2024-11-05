@@ -56,18 +56,18 @@ int main(int argc, char **argv)
     int inner_corners_h = inner_corners[1]; // horizontal direction
 
     // 3D coordinates of chessboard corners for each image
-    std::vector<std::vector<cv::Point3d>> all_corners_3D;
+    std::vector<std::vector<cv::Point3f>> all_corners_3D;
 
     // Pixel coordinates of chessboard corners for each image
-    std::vector<std::vector<cv::Point2d>> all_corners_2D_L, all_corners_2D_R;
+    std::vector<std::vector<cv::Point2f>> all_corners_2D_L, all_corners_2D_R;
 
     // 3D coordinates of chessboard corners (single image)
-    std::vector<cv::Point3d> corners_3D;
-    double d = 21; // distance between corners in [mm]
+    std::vector<cv::Point3f> corners_3D;
+    float d = 21; // distance between corners in [mm]
     for (int i = 0; i < inner_corners_h; i++)
     {
         for (int j = 0; j < inner_corners_v; j++)
-            corners_3D.push_back(cv::Point3d(j * d, i * d, 0));
+            corners_3D.push_back(cv::Point3f(j * d, i * d, 0));
     }
 
     std::vector<cv::String> image_paths_L, image_paths_R;
@@ -79,7 +79,7 @@ int main(int argc, char **argv)
     cv::glob(pattern_R, image_paths_R);
 
     // Pixel coordinates of chessboard corners (single image)
-    std::vector<cv::Point2d> corners_2D_L, corners_2D_R;
+    std::vector<cv::Point2f> corners_2D_L, corners_2D_R;
 
     cv::Mat image_L, image_R, image_gray_L, image_gray_R;
     bool success_L, success_R;
@@ -141,7 +141,7 @@ int main(int argc, char **argv)
 
     for (size_t i = 0; i < all_corners_3D.size(); i++)
     {
-        std::vector<cv::Point2d> proj_corners_L, proj_corners_R;
+        std::vector<cv::Point2f> proj_corners_L, proj_corners_R;
         cv::projectPoints(all_corners_3D[i], R_L[i], T_L[i], camera_matrix_L, dist_coeffs_L, proj_corners_L);
         cv::projectPoints(all_corners_3D[i], R_R[i], T_R[i], camera_matrix_R, dist_coeffs_R, proj_corners_R);
 
