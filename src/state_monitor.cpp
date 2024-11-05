@@ -11,11 +11,13 @@ public:
 
     void initialize_subscribers(image_transport::ImageTransport &it)
     {
+        image_transport::TransportHints transport_hints(this, "compressed");
+
         // Subscription to the camera image topic
-        cam_img_subscription_ = it.subscribe("/left_camera/image", 10, std::bind(&StateMonitor::camera_image_callback, this, std::placeholders::_1));
+        cam_img_subscription_ = it.subscribe("/left_camera/image", 10, std::bind(&StateMonitor::camera_image_callback, this, std::placeholders::_1), std::shared_ptr<void>(), &transport_hints);
 
         // Subscription to the odometry path image topic
-        path_img_subscription_ = it.subscribe("/autonomous_navigator/path_image", 10, std::bind(&StateMonitor::odometry_path_image_callback, this, std::placeholders::_1));
+        path_img_subscription_ = it.subscribe("/autonomous_navigator/path_image", 10, std::bind(&StateMonitor::odometry_path_image_callback, this, std::placeholders::_1), std::shared_ptr<void>(), &transport_hints);
     }
 
 private:
