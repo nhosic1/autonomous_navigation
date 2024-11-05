@@ -25,7 +25,7 @@ private:
         cv::Mat camera_image;
         try
         {
-            camera_image = cv_bridge::toCvCopy(msg, "rgb8")->image;
+            camera_image = cv_bridge::toCvCopy(msg, "bgr8")->image;
         }
         catch (cv_bridge::Exception &e)
         {

@@ -69,8 +69,8 @@ private:
         // Convert ROS2 image messages to cv::Mat objects
         try
         {
-            cv_left_img_ptr = cv_bridge::toCvCopy(left_img_msg_ptr, sensor_msgs::image_encodings::RGB8);
-            cv_right_img_ptr = cv_bridge::toCvCopy(right_img_msg_ptr, sensor_msgs::image_encodings::RGB8);
+            cv_left_img_ptr = cv_bridge::toCvCopy(left_img_msg_ptr, "bgr8");
+            cv_right_img_ptr = cv_bridge::toCvCopy(right_img_msg_ptr, "bgr8");
         }
         catch (cv_bridge::Exception &e)
         {
