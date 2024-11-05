@@ -25,14 +25,16 @@ public:
             // Reset the callback count
             callback_count_ = 0;
 
-            snapshot_count_++; });
+            seconds_count_++; });
 
         // Initialize the callback count
         callback_count_ = 0;
 
-        snapshot_count_ = 0;
+        // Initialize the seconds count
+        seconds_count_ = 0;
 
         this->declare_parameter("snapshot", false);
+        this->declare_parameter("auto_snapshot", 0);
         this->declare_parameter("output_folder_L", "");
         this->declare_parameter("output_folder_R", "");
         this->declare_parameter("rectify", false);
@@ -95,10 +97,11 @@ private:
         cv::waitKey(1);
         callback_count_++;
 
-        if (snapshot_count_ == 2)
+        int auto_snapshot_rate = this->get_parameter("auto_snapshot").as_int();
+        if (auto_snapshot_rate > 0 && seconds_count_ >= auto_snapshot_rate)
         {
             this->set_parameter(rclcpp::Parameter("snapshot", true));
-            snapshot_count_ = 0;
+            seconds_count_ = 0;
         }
 
         bool snapshot = this->get_parameter("snapshot").as_bool();
@@ -155,7 +158,7 @@ private:
 
     bool rectify_;
     int callback_count_;
-    int snapshot_count_;
+    int seconds_count_;
     rclcpp::TimerBase::SharedPtr timer_;
 
     // Stereo camera params
