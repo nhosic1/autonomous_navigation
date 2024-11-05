@@ -10,7 +10,7 @@ using namespace libcamera;
 class FramePublisher : public rclcpp::Node
 {
 public:
-    FramePublisher() : Node("frame_publisher"), image_transport_(this->shared_from_this())
+    FramePublisher() : Node("frame_publisher")
     {
         this->declare_parameter("camera_id", 0);
         camera_id_ = this->get_parameter("camera_id").as_int();
