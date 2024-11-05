@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/image_encodings.hpp>
+#include <image_transport/image_transport.hpp>
 #include <sys/mman.h>
 #include <libcamera/libcamera.h>
 
@@ -9,12 +10,10 @@ using namespace libcamera;
 class FramePublisher : public rclcpp::Node
 {
 public:
-    FramePublisher() : Node("frame_publisher")
+    FramePublisher() : Node("frame_publisher"), image_transport_(this->shared_from_this())
     {
         this->declare_parameter("camera_id", 0);
         camera_id_ = this->get_parameter("camera_id").as_int();
-        std::string topic_name = "~/camera_" + std::to_string(camera_id_) + "/image";
-        FramePublisher::image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>(topic_name, 10);
 
         // Frame size params
         const int frame_width = 768;
@@ -97,6 +96,13 @@ public:
         cm_->stop();
     }
 
+    void initialize_publishers(image_transport::ImageTransport &it)
+    {
+        // Create image publisher
+        std::string topic_name = "~/camera_" + std::to_string(camera_id_) + "/image";
+        image_publisher_ = it.advertise(topic_name, 1);
+    }
+
 private:
     void process_request(Request *request)
     {
@@ -149,7 +155,7 @@ private:
             }
 
             // Publish image message
-            image_publisher_->publish(msg_img);
+            image_publisher_.publish(msg_img);
 
             // Unmap the buffer
             munmap(data, buffer_length);
@@ -166,7 +172,7 @@ private:
     Stream *stream_;
     FrameBufferAllocator *allocator_;
     std::vector<std::unique_ptr<Request>> requests_;
-    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_publisher_;
+    image_transport::Publisher image_publisher_;
 };
 
 int main(int argc, char **argv)
@@ -174,6 +180,9 @@ int main(int argc, char **argv)
     rclcpp::init(argc, argv);
 
     auto node = std::make_shared<FramePublisher>();
+
+    image_transport::ImageTransport it(node);
+    node->initialize_publishers(it);
 
     rclcpp::spin(node);
     rclcpp::shutdown();

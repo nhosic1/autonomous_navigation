@@ -2,8 +2,9 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
+#include <image_transport/image_transport.hpp>
+#include <image_transport/subscriber_filter.hpp>
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.hpp>
 #include <filesystem>
@@ -39,17 +40,19 @@ public:
         sp::load_stereo_camera_parameters(stereo_camera_params_path, camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, P_L_, camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, P_R_, T_, Q_);
 
         // Create subscribers for left and right stereo image topics
-        left_subscriber_.subscribe(this, "/left_camera/image");
-        right_subscriber_.subscribe(this, "/right_camera/image");
-
-        // Create publisher for images of estimated path
-        std::string topic_name = "~/path_image";
-        AutonomousNavigator::path_img_publisher_ = this->create_publisher<sensor_msgs::msg::Image>(topic_name, 10);
+        left_subscriber_.subscribe(this, "/left_camera/image", "raw");
+        right_subscriber_.subscribe(this, "/right_camera/image", "raw");
 
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
         time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 30000000)); // 0.03 sec
         time_sync_->registerCallback(std::bind(&AutonomousNavigator::imageCallback, this, std::placeholders::_1, std::placeholders::_2));
+    }
+
+    void initialize_publishers(image_transport::ImageTransport &it)
+    {
+        // Create path image publisher
+        path_img_publisher_ = it.advertise("~/path_image", 1);
     }
 
 private:
@@ -252,7 +255,7 @@ private:
 
         // Publish image with estimated path
         sensor_msgs::msg::Image::SharedPtr msg_img = cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", path_image_).toImageMsg();
-        path_img_publisher_->publish(*msg_img);
+        path_img_publisher_.publish(*msg_img);
 
         callback_count_++;
 
@@ -332,12 +335,12 @@ private:
         }
     }
 
-    // Publishers
-    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr path_img_publisher_;
+    // Publisher for path images
+    image_transport::Publisher path_img_publisher_;
 
-    // Subscription objects for left and right stereo images
-    message_filters::Subscriber<sensor_msgs::msg::Image> left_subscriber_;
-    message_filters::Subscriber<sensor_msgs::msg::Image> right_subscriber_;
+    // Subscribers for left and right stereo images)
+    image_transport::SubscriberFilter left_subscriber_;
+    image_transport::SubscriberFilter right_subscriber_;
 
     // Pointer for the Synchronizer
     std::shared_ptr<approximate_time_synchronizer> time_sync_;
@@ -405,6 +408,9 @@ int main(int argc, char **argv)
     // Initialize ROS 2 node
     rclcpp::init(argc, argv);
     auto node = std::make_shared<AutonomousNavigator>();
+
+    image_transport::ImageTransport it(node);
+    node->initialize_publishers(it);
 
     // Spin the node
     rclcpp::spin(node);

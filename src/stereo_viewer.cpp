@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <message_filters/subscriber.h>
+#include <image_transport/image_transport.hpp>
+#include <image_transport/subscriber_filter.hpp>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.hpp>
@@ -49,13 +50,13 @@ public:
         }
 
         // Create subscribers for left and right stereo image topics
-        left_subscriber_.subscribe(this, "/left_camera/image");
-        right_subscriber_.subscribe(this, "/right_camera/image");
+        left_subscriber_.subscribe(this, "/left_camera/image", "raw");
+        right_subscriber_.subscribe(this, "/right_camera/image", "raw");
 
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
         time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 30000000)); // 0.03 sec
-        time_sync_->registerCallback(std::bind(&StereoViewer::imageCallback, this, std::placeholders::_1, std::placeholders::_2));
+        time_sync_->registerCallback(std::bind(&StereoViewer::imageCallback, this, std::placeholders::_1, std::placeholders::_2));        
     }
 
 private:
@@ -145,9 +146,9 @@ private:
         this->set_parameter(rclcpp::Parameter("snapshot", false));
     }
 
-    // Subscription objects for left and right stereo images
-    message_filters::Subscriber<sensor_msgs::msg::Image> left_subscriber_;
-    message_filters::Subscriber<sensor_msgs::msg::Image> right_subscriber_;
+    // Subscribers for left and right stereo images)
+    image_transport::SubscriberFilter left_subscriber_;
+    image_transport::SubscriberFilter right_subscriber_;
 
     // Pointer for the Synchronizer
     std::shared_ptr<approximate_time_synchronizer> time_sync_;

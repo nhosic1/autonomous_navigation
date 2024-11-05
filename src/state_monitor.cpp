@@ -2,6 +2,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.hpp>
+#include <image_transport/image_transport.hpp>
 
 
 class StateMonitor : public rclcpp::Node
@@ -16,16 +17,19 @@ public:
 
             // Reset the callback count
             callback_count_ = 0; });
+    }
 
+    void initialize_subscribers(image_transport::ImageTransport &it)
+    {
         // Subscription to the camera image topic
-        cam_img_subscription_ = this->create_subscription<sensor_msgs::msg::Image>("/left_camera/image", 10, std::bind(&StateMonitor::camera_image_callback, this, std::placeholders::_1));
+        cam_img_subscription_ = it.subscribe("/left_camera/image", 10, std::bind(&StateMonitor::camera_image_callback, this, std::placeholders::_1));
 
         // Subscription to the odometry path image topic
-        path_img_subscription_ = this->create_subscription<sensor_msgs::msg::Image>("/autonomous_navigator/path_image", 10, std::bind(&StateMonitor::odometry_path_image_callback, this, std::placeholders::_1));
+        path_img_subscription_ = it.subscribe("/autonomous_navigator/path_image", 10, std::bind(&StateMonitor::odometry_path_image_callback, this, std::placeholders::_1));
     }
 
 private:
-    void camera_image_callback(const sensor_msgs::msg::Image::SharedPtr msg)
+    void camera_image_callback(const sensor_msgs::msg::Image::ConstSharedPtr msg)
     {
         // Convert the ROS image message to an OpenCV image
         cv::Mat camera_image;
@@ -43,7 +47,7 @@ private:
         // cv::waitKey(1);  // Update the display window
     }
 
-    void odometry_path_image_callback(const sensor_msgs::msg::Image::SharedPtr msg)
+    void odometry_path_image_callback(const sensor_msgs::msg::Image::ConstSharedPtr msg)
     {
         // Convert the ROS image message to an OpenCV image
         cv::Mat odometry_path_image;
@@ -61,9 +65,10 @@ private:
         // Log a message
         // RCLCPP_INFO(this->get_logger(), "Received an odometry path image.");
     }
+
     // Subscribers for the two image topics
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr cam_img_subscription_;
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr path_img_subscription_;
+    image_transport::Subscriber cam_img_subscription_;
+    image_transport::Subscriber path_img_subscription_;
 
     int callback_count_ = 0;
     rclcpp::TimerBase::SharedPtr timer_;
@@ -74,8 +79,12 @@ int main(int argc, char **argv)
     // Initialize the ROS 2 client library
     rclcpp::init(argc, argv);
 
-    // Create and run the StateMonitor node
+    // Initialize ROS 2 node
     auto node = std::make_shared<StateMonitor>();
+    image_transport::ImageTransport it(node);
+    node->initialize_subscribers(it);
+
+    // Spin the node
     rclcpp::spin(node);
 
     // Cleanup
