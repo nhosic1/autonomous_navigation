@@ -34,8 +34,8 @@ private:
         }
 
         // Display the camera image
-        // cv::imshow("Camera Image", camera_image);
-        // cv::waitKey(1);  // Update the display window
+        cv::imshow("Camera Image", camera_image);
+        cv::waitKey(1);  // Update the display window
     }
 
     void odometry_path_image_callback(const sensor_msgs::msg::Image::ConstSharedPtr msg)
@@ -55,9 +55,6 @@ private:
         // Display the odometry path image
         cv::imshow("Odometry Path Image", odometry_path_image);
         cv::waitKey(1); // Update the display window
-
-        // Log a message
-        // RCLCPP_INFO(this->get_logger(), "Received an odometry path image.");
     }
 
     // Subscribers for the two image topics
@@ -80,6 +77,6 @@ int main(int argc, char **argv)
 
     // Cleanup
     rclcpp::shutdown();
-    // cv::destroyAllWindows();
+    cv::destroyAllWindows();
     return 0;
 }
