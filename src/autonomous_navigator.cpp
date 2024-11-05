@@ -249,10 +249,6 @@ private:
             tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
         }
 
-        // // Display the updated trajectory
-        // cv::imshow("Estimated Path", path_image_);
-        // cv::waitKey(1);
-
         // Publish image with estimated path
         sensor_msgs::msg::Image::SharedPtr msg_img = cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", path_image_).toImageMsg();
         path_img_publisher_.publish(*msg_img);
@@ -396,15 +392,6 @@ private:
 
 int main(int argc, char **argv)
 {
-    // // Create a named window for visualization
-    // cv::namedWindow("Estimated Path", cv::WINDOW_AUTOSIZE);
-    // // Create a named window for visualization
-    // cv::namedWindow("Estimated Path", cv::WINDOW_AUTOSIZE);
-
-    // // Window is white by default
-    // cv::imshow("Estimated Path", cv::Mat(600, 600, CV_8UC3, cv::Scalar(255, 255, 255)));
-    // cv::waitKey(10);
-
     // Initialize ROS 2 node
     rclcpp::init(argc, argv);
     auto node = std::make_shared<AutonomousNavigator>();
@@ -415,15 +402,8 @@ int main(int argc, char **argv)
     // Spin the node
     rclcpp::spin(node);
 
-    // RCLCPP_INFO(this->get_logger(), "Navigation system is running...");
-
     // Shutdown ROS 2 node
     rclcpp::shutdown();
-
-    // // Destroy the window when the node exits
-    // cv::destroyWindow("Estimated Path");
-    // // Destroy the window when the node exits
-    // cv::destroyWindow("Estimated Path");
 
     return 0;
 }
