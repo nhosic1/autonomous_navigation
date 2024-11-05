@@ -4,20 +4,10 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <image_transport/image_transport.hpp>
 
-
 class StateMonitor : public rclcpp::Node
 {
 public:
-    StateMonitor() : Node("state_monitor")
-    {
-        // Create a timer to check FPS
-        timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]()
-                                         {
-            RCLCPP_INFO(this->get_logger(), "FPS = %d", callback_count_);
-
-            // Reset the callback count
-            callback_count_ = 0; });
-    }
+    StateMonitor() : Node("state_monitor") {}
 
     void initialize_subscribers(image_transport::ImageTransport &it)
     {
@@ -33,14 +23,15 @@ private:
     {
         // Convert the ROS image message to an OpenCV image
         cv::Mat camera_image;
-        try {
+        try
+        {
             camera_image = cv_bridge::toCvCopy(msg, "rgb8")->image;
-        } catch (cv_bridge::Exception& e) {
+        }
+        catch (cv_bridge::Exception &e)
+        {
             RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
             return;
         }
-
-        callback_count_++;
 
         // Display the camera image
         // cv::imshow("Camera Image", camera_image);
@@ -51,16 +42,19 @@ private:
     {
         // Convert the ROS image message to an OpenCV image
         cv::Mat odometry_path_image;
-        try {
+        try
+        {
             odometry_path_image = cv_bridge::toCvCopy(msg, "bgr8")->image;
-        } catch (cv_bridge::Exception& e) {
+        }
+        catch (cv_bridge::Exception &e)
+        {
             RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
             return;
         }
 
         // Display the odometry path image
         cv::imshow("Odometry Path Image", odometry_path_image);
-        cv::waitKey(1);  // Update the display window
+        cv::waitKey(1); // Update the display window
 
         // Log a message
         // RCLCPP_INFO(this->get_logger(), "Received an odometry path image.");
@@ -69,9 +63,6 @@ private:
     // Subscribers for the two image topics
     image_transport::Subscriber cam_img_subscription_;
     image_transport::Subscriber path_img_subscription_;
-
-    int callback_count_ = 0;
-    rclcpp::TimerBase::SharedPtr timer_;
 };
 
 int main(int argc, char **argv)
