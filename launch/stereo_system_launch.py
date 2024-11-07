@@ -11,7 +11,8 @@ def generate_launch_description():
                 name="left_frame_publisher",
                 ros_arguments=["-p", "camera_id:=0"],
                 remappings=[
-                    ("/left_frame_publisher/camera_0/image", "/left_camera/image")
+                    ("/left_frame_publisher/camera_0/image", "/left_camera/image"),
+                    ("/left_frame_publisher/camera_0/image/compressed", "/left_camera/image/compressed")
                 ],
             ),
             Node(
@@ -20,7 +21,8 @@ def generate_launch_description():
                 name="right_frame_publisher",
                 ros_arguments=["-p", "camera_id:=1"],
                 remappings=[
-                    ("/right_frame_publisher/camera_1/image", "/right_camera/image")
+                    ("/right_frame_publisher/camera_1/image", "/right_camera/image"),
+                    ("/right_frame_publisher/camera_1/image/compressed", "/right_camera/image/compressed")
                 ],
             ),
         ]
