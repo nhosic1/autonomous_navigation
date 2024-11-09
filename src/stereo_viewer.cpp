@@ -52,8 +52,8 @@ public:
         }
 
         // Create subscribers for left and right stereo image topics
-        left_subscriber_.subscribe(this, "/left_camera/image", "raw");
-        right_subscriber_.subscribe(this, "/right_camera/image", "raw");
+        left_subscriber_.subscribe(this, "/left_camera/image", "compressed");
+        right_subscriber_.subscribe(this, "/right_camera/image", "compressed");
 
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
