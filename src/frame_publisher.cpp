@@ -78,12 +78,6 @@ public:
 
         // Connect processing slot to requestCompleted signal
         camera_->requestCompleted.connect(this, &FramePublisher::process_request);
-
-        // Start capturing frames
-        camera_->start();
-
-        for (std::unique_ptr<Request> &request : requests_)
-            camera_->queueRequest(request.get());
     }
 
     ~FramePublisher()
@@ -96,11 +90,18 @@ public:
         cm_->stop();
     }
 
-    void initialize_publishers(image_transport::ImageTransport &it)
+    void initialize_publishing(image_transport::ImageTransport &it)
     {
         // Create image publisher
         std::string topic_name = "~/camera_" + std::to_string(camera_id_) + "/image";
         image_publisher_ = it.advertise(topic_name, 1);
+
+        // Start capturing frames
+        camera_->start();
+
+        // Queue requests to the camera   
+        for (std::unique_ptr<Request> &request : requests_)
+            camera_->queueRequest(request.get());
     }
 
 private:
@@ -182,7 +183,7 @@ int main(int argc, char **argv)
     auto node = std::make_shared<FramePublisher>();
 
     image_transport::ImageTransport it(node);
-    node->initialize_publishers(it);
+    node->initialize_publishing(it);
 
     rclcpp::spin(node);
     rclcpp::shutdown();
