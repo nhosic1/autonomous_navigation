@@ -57,7 +57,7 @@ public:
 
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
-        time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 30000000)); // 0.03 sec
+        time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 35000000)); // 0.035 sec
         time_sync_->registerCallback(std::bind(&StereoViewer::imageCallback, this, std::placeholders::_1, std::placeholders::_2));        
     }
 
