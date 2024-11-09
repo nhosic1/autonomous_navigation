@@ -52,8 +52,8 @@ public:
         int allocated_buffer_count = allocator_->buffers(stream_).size();
         RCLCPP_INFO(this->get_logger(), "Allocated buffers: %d", allocated_buffer_count);
 
-        long min_frame_duration = 25000; // microseconds
-        long max_frame_duration = 25000; // microseconds
+        long min_frame_duration = 30000; // microseconds
+        long max_frame_duration = 30000; // microseconds
 
         for (const std::unique_ptr<libcamera::FrameBuffer> &buffer : allocator_->buffers(stream_))
         {
@@ -64,7 +64,7 @@ public:
                 RCLCPP_ERROR(this->get_logger(), "Failed to set buffer for frame request");
             }
 
-            // Set frame rate to 40 Hz
+            // Set frame rate to 33.33 Hz
             request->controls().set(controls::FrameDurationLimits, Span<const std::int64_t, 2>({min_frame_duration, max_frame_duration}));
 
             // Disable autofocus
