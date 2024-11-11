@@ -27,7 +27,7 @@ private:
         cv::Mat camera_image;
         try
         {
-            camera_image = cv_bridge::toCvCopy(msg, "bgr8")->image;
+            camera_image = cv_bridge::toCvCopy(msg)->image;
         }
         catch (cv_bridge::Exception &e)
         {
@@ -46,7 +46,7 @@ private:
         cv::Mat odometry_path_image;
         try
         {
-            odometry_path_image = cv_bridge::toCvCopy(msg, "bgr8")->image;
+            odometry_path_image = cv_bridge::toCvCopy(msg)->image;
         }
         catch (cv_bridge::Exception &e)
         {
