@@ -116,6 +116,7 @@ int main(int argc, char **argv)
         cv::Mat image_L_R;
         cv::hconcat(image_L, image_R, image_L_R);
         cv::imshow("Image", image_L_R);
+        std::cout << std::filesystem::path(image_paths_L[i]).filename().string() << std::endl;
         cv::waitKey(0);
     }
 
