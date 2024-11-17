@@ -34,7 +34,7 @@ public:
 
         std::string package_name = "autonomous_navigation";
         std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
-        std::string stereo_camera_params_path = package_share_directory + "/config/sim_stereo_camera_params.yaml";
+        std::string stereo_camera_params_path = package_share_directory + "/config/stereo_camera_params.yaml";
 
         // Load params for stereo camera
         sp::load_stereo_camera_parameters(stereo_camera_params_path, camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, P_L_, camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, P_R_, T_, Q_);
