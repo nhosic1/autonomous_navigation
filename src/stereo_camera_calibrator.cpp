@@ -51,6 +51,8 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    RCLCPP_INFO(node->get_logger(), "Finding chessboard corners...");
+
     // Set chessboard size
     int inner_corners_v = inner_corners[0]; // vertical direction
     int inner_corners_h = inner_corners[1]; // horizontal direction
@@ -121,6 +123,28 @@ int main(int argc, char **argv)
     }
 
     cv::destroyAllWindows();
+
+    char input;
+
+    std::cout << "Start calibration? (y/n): ";
+
+    while (rclcpp::ok()) {
+        std::cin >> input;
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        
+        input = std::tolower(input);
+
+        if (input == 'y' || input == 'n') {
+            break;
+        } else {
+            std::cout << "Invalid input. Enter 'y' or 'n': ";
+        }
+    }
+
+    if (input == 'n') {
+        rclcpp::shutdown();
+        return 0;
+    }
 
     cv::Mat camera_matrix_L, dist_coeffs_L;
     cv::Mat camera_matrix_R, dist_coeffs_R;
