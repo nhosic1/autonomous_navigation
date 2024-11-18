@@ -139,7 +139,7 @@ private:
             bool success = false;
             cv::Mat rvec_guess = rvec_.clone();
             cv::Mat tvec_guess = tvec_.clone();
-            success = loc::compute_local_pose(camera_matrix_L_rect_, dist_coeffs_L_, matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec_guess, tvec_guess);
+            success = loc::compute_local_pose(camera_matrix_L_rect_, cv::Mat(), matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec_guess, tvec_guess);
 
             if (success)
             {
