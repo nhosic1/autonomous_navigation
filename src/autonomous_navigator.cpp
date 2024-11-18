@@ -39,6 +39,8 @@ public:
         // Load params for stereo camera
         sp::load_stereo_camera_parameters(stereo_camera_params_path, camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, P_L_, camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, P_R_, T_, Q_);
 
+        camera_matrix_L_rect_ = P_L_(cv::Rect(0, 0, 3, 3)).clone();
+
         // Create subscribers for left and right stereo image topics
         left_subscriber_.subscribe(this, "/left_camera/image", "raw");
         right_subscriber_.subscribe(this, "/right_camera/image", "raw");
@@ -137,7 +139,7 @@ private:
             bool success = false;
             cv::Mat rvec_guess = rvec_.clone();
             cv::Mat tvec_guess = tvec_.clone();
-            success = loc::compute_local_pose(camera_matrix_L_, dist_coeffs_L_, matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec_guess, tvec_guess);
+            success = loc::compute_local_pose(camera_matrix_L_rect_, dist_coeffs_L_, matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec_guess, tvec_guess);
 
             if (success)
             {
@@ -345,7 +347,7 @@ private:
     rclcpp::TimerBase::SharedPtr timer_;
 
     // Stereo camera params
-    cv::Mat camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, P_L_;
+    cv::Mat camera_matrix_L_, camera_matrix_L_rect_, dist_coeffs_L_, map_1_L_, map_2_L_, P_L_;
     cv::Mat camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, P_R_;
     cv::Mat T_;
     cv::Mat Q_;
