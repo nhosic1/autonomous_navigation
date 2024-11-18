@@ -105,12 +105,15 @@ private:
 
         if (descriptors_L.empty() || descriptors_R.empty())
         {
-            RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (not enough detected features). Reinitializing...");
+            RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (not enough detected features).");
             start_vo_ = false;
             path_points_.clear();
 
             save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
             save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+            
+            rclcpp::shutdown();
+            return;
         }
         else
         {
@@ -118,7 +121,7 @@ private:
 
             if (!success)
             {
-                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute 3D points). Reinitializing...");
+                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute 3D points).");
                 start_vo_ = false;
                 path_points_.clear();
 
@@ -131,6 +134,9 @@ private:
 
                 save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                 save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+
+                rclcpp::shutdown();
+                return;
             }
         }
 
@@ -155,7 +161,7 @@ private:
 
                 if (std::abs(cv::norm(tvec_) - cv::norm(tvec_guess)) > max_expected_distance + tolerance)
                 {
-                    RCLCPP_WARN(this->get_logger(), "Computed local pose is invalid. Translation magnitude exceeds the expected value.");
+                    RCLCPP_ERROR(this->get_logger(), "Computed local pose is invalid. Translation magnitude exceeds the expected value.");
 
                     save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                     save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
@@ -167,6 +173,9 @@ private:
                     std::cout << "Result:" << std::endl;
                     std::cout << "rvec = " << rvec_guess << std::endl;
                     std::cout << "tvec = " << tvec_guess << std::endl;
+
+                    rclcpp::shutdown();
+                    return;
                 }
                 
                 rvec_ = rvec_guess;
@@ -216,7 +225,7 @@ private:
             }
             else
             {
-                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute local pose). Reinitializing global pose.");
+                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute local pose).");
 
                 save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                 save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
@@ -226,6 +235,7 @@ private:
                 std::cout << "tvec = " << tvec_ << std::endl;
 
                 rclcpp::shutdown();
+                return;
             }
         }
         else
