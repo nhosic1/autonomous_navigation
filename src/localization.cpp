@@ -85,7 +85,7 @@ namespace loc
                 if (point_2D == point_2D_matched_prev)
                 {
                     // Ignore matched points inconsistent with estimated position
-                    const cv::Point2d point_2D_proj(static_cast<double>(points_2D_proj[i].x), static_cast<double>(points_2D_proj[i].y));;
+                    const cv::Point2d point_2D_proj(static_cast<double>(points_2D_proj[i].x), static_cast<double>(points_2D_proj[i].y));
                     if (cv::norm(point_2D_matched - point_2D_proj) < 40.0)
                     {
                         points_2D_pnp.push_back(point_2D_matched);
