@@ -70,6 +70,9 @@ public:
             // Disable autofocus
             request->controls().set(controls::AfMode, controls::AfModeManual);
 
+            // Set short exposure time to reduce motion blur
+            request->controls().set(controls::ExposureTime, 20000);
+
             requests_.push_back(std::move(request));
         }
 
