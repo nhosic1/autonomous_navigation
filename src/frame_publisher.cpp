@@ -27,7 +27,7 @@ public:
         camera_ = cm_->get(camera_str_id);
         camera_->acquire();
 
-        // Configure the camera with the StillCapture stream
+        // Configure the camera with the Viewfinder stream
         std::unique_ptr<CameraConfiguration> config = camera_->generateConfiguration({StreamRole::Viewfinder});
         StreamConfiguration &stream_config = config->at(0);
 
