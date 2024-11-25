@@ -364,7 +364,7 @@ private:
 
     // ORB detector
     cv::Ptr<cv::ORB> orb_ = cv::ORB::create(
-        1000,                  // nfeatures
+        1400,                  // nfeatures
         1.2f,                  // scaleFactor
         8,                     // nlevels
         25,                    // edgeThreshold
@@ -372,7 +372,7 @@ private:
         2,                     // WTA_K
         cv::ORB::HARRIS_SCORE, // scoreType
         31,                    // patchSize
-        10                     // fastThreshold
+        12                     // fastThreshold
     );
 
     // Descriptor matcher
