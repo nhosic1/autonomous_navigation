@@ -1,8 +1,9 @@
 #include <opencv2/opencv.hpp>
+#include "autonomous_navigation/localization.hpp"
 
 namespace loc
 {
-    void filter_points_with_RANSAC(const std::vector<cv::Point2d> &points_1, const std::vector<cv::Point2d> &points_2, const cv::Mat& camera_matrix, std::vector<cv::Point2d> &points_1_filtered, std::vector<cv::Point2d> &points_2_filtered, double confidence = 0.99, double reproj_threshold = 1.0)
+    void filter_points_with_RANSAC(const std::vector<cv::Point2d> &points_1, const std::vector<cv::Point2d> &points_2, const cv::Mat& camera_matrix, std::vector<cv::Point2d> &points_1_filtered, std::vector<cv::Point2d> &points_2_filtered, double confidence, double reproj_threshold)
     {
         // Use RANSAC to compute the essential matrix and filter outliers
         std::vector<uchar> inliers_mask;
