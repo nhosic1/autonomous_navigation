@@ -3,4 +3,6 @@
 docs/source/apidoc/
 /.vscode
 /data
+test
+src/testing.cpp
 __pycache__

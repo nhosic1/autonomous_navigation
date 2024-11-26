@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <message_filters/subscriber.h>
+#include <image_transport/image_transport.hpp>
+#include <image_transport/subscriber_filter.hpp>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.hpp>
@@ -24,14 +25,16 @@ public:
             // Reset the callback count
             callback_count_ = 0;
 
-            snapshot_count_++; });
+            seconds_count_++; });
 
         // Initialize the callback count
         callback_count_ = 0;
 
-        snapshot_count_ = 0;
+        // Initialize the seconds count
+        seconds_count_ = 0;
 
         this->declare_parameter("snapshot", false);
+        this->declare_parameter("auto_snapshot", 0);
         this->declare_parameter("output_folder_L", "");
         this->declare_parameter("output_folder_R", "");
         this->declare_parameter("rectify", false);
@@ -49,13 +52,13 @@ public:
         }
 
         // Create subscribers for left and right stereo image topics
-        left_subscriber_.subscribe(this, "/left_camera/image");
-        right_subscriber_.subscribe(this, "/right_camera/image");
+        left_subscriber_.subscribe(this, "/left_camera/image", "compressed");
+        right_subscriber_.subscribe(this, "/right_camera/image", "compressed");
 
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
-        time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 30000000)); // 0.03 sec
-        time_sync_->registerCallback(std::bind(&StereoViewer::imageCallback, this, std::placeholders::_1, std::placeholders::_2));
+        time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 35000000)); // 0.035 sec
+        time_sync_->registerCallback(std::bind(&StereoViewer::imageCallback, this, std::placeholders::_1, std::placeholders::_2));        
     }
 
 private:
@@ -68,8 +71,8 @@ private:
         // Convert ROS2 image messages to cv::Mat objects
         try
         {
-            cv_left_img_ptr = cv_bridge::toCvCopy(left_img_msg_ptr, sensor_msgs::image_encodings::RGB8);
-            cv_right_img_ptr = cv_bridge::toCvCopy(right_img_msg_ptr, sensor_msgs::image_encodings::RGB8);
+            cv_left_img_ptr = cv_bridge::toCvCopy(left_img_msg_ptr);
+            cv_right_img_ptr = cv_bridge::toCvCopy(right_img_msg_ptr);
         }
         catch (cv_bridge::Exception &e)
         {
@@ -94,10 +97,11 @@ private:
         cv::waitKey(1);
         callback_count_++;
 
-        if (snapshot_count_ == 2)
+        int auto_snapshot_rate = this->get_parameter("auto_snapshot").as_int();
+        if (auto_snapshot_rate > 0 && seconds_count_ >= auto_snapshot_rate)
         {
             this->set_parameter(rclcpp::Parameter("snapshot", true));
-            snapshot_count_ = 0;
+            seconds_count_ = 0;
         }
 
         bool snapshot = this->get_parameter("snapshot").as_bool();
@@ -145,16 +149,16 @@ private:
         this->set_parameter(rclcpp::Parameter("snapshot", false));
     }
 
-    // Subscription objects for left and right stereo images
-    message_filters::Subscriber<sensor_msgs::msg::Image> left_subscriber_;
-    message_filters::Subscriber<sensor_msgs::msg::Image> right_subscriber_;
+    // Subscribers for left and right stereo images)
+    image_transport::SubscriberFilter left_subscriber_;
+    image_transport::SubscriberFilter right_subscriber_;
 
     // Pointer for the Synchronizer
     std::shared_ptr<approximate_time_synchronizer> time_sync_;
 
     bool rectify_;
     int callback_count_;
-    int snapshot_count_;
+    int seconds_count_;
     rclcpp::TimerBase::SharedPtr timer_;
 
     // Stereo camera params

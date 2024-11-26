@@ -2,8 +2,9 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
+#include <image_transport/image_transport.hpp>
+#include <image_transport/subscriber_filter.hpp>
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.hpp>
 #include <filesystem>
@@ -23,7 +24,7 @@ public:
         // Create a timer to check FPS
         timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]()
                                          {
-            // RCLCPP_INFO(this->get_logger(), "FPS = %d", callback_count_);
+            RCLCPP_INFO(this->get_logger(), "FPS = %d", callback_count_);
 
             // Reset the callback count
             callback_count_ = 0; });
@@ -33,19 +34,27 @@ public:
 
         std::string package_name = "autonomous_navigation";
         std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
-        std::string stereo_camera_params_path = package_share_directory + "/config/sim_stereo_camera_params.yaml";
+        std::string stereo_camera_params_path = package_share_directory + "/config/stereo_camera_params.yaml";
 
         // Load params for stereo camera
         sp::load_stereo_camera_parameters(stereo_camera_params_path, camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, P_L_, camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, P_R_, T_, Q_);
 
+        camera_matrix_L_rect_ = P_L_(cv::Rect(0, 0, 3, 3)).clone();
+
         // Create subscribers for left and right stereo image topics
-        left_subscriber_.subscribe(this, "/left_camera/image");
-        right_subscriber_.subscribe(this, "/right_camera/image");
+        left_subscriber_.subscribe(this, "/left_camera/image", "raw");
+        right_subscriber_.subscribe(this, "/right_camera/image", "raw");
 
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
-        time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 30000000)); // 0.03 sec
+        time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 35000000)); // 0.035 sec
         time_sync_->registerCallback(std::bind(&AutonomousNavigator::imageCallback, this, std::placeholders::_1, std::placeholders::_2));
+    }
+
+    void initialize_publishers(image_transport::ImageTransport &it)
+    {
+        // Create path image publisher
+        path_img_publisher_ = it.advertise("~/path_image", 1);
     }
 
 private:
@@ -94,14 +103,41 @@ private:
         std::vector<cv::Point2d> points_2D_stereo;
         double average_depth;
 
-        bool success = false;
-        success = sp::compute_3D_points_from_features(matcher_, P_L_, keypoints_L, descriptors_L, P_R_, keypoints_R, descriptors_R, points_3D_stereo, points_2D_stereo, average_depth);
-
-        if (!success)
+        if (descriptors_L.empty() || descriptors_R.empty())
         {
-            RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute 3D points). Reinitializing global pose.");
+            RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (not enough detected features).");
             start_vo_ = false;
             path_points_.clear();
+
+            save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
+            save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+            
+            rclcpp::shutdown();
+            return;
+        }
+        else
+        {
+            bool success = sp::compute_3D_points_from_features(matcher_, P_L_, keypoints_L, descriptors_L, P_R_, keypoints_R, descriptors_R, points_3D_stereo, points_2D_stereo, average_depth);
+
+            if (!success)
+            {
+                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute 3D points).");
+                start_vo_ = false;
+                path_points_.clear();
+
+                std::cout << "descriptors L:" << descriptors_L.size() << std::endl;
+                std::cout << "descriptors R:" << descriptors_R.size() << std::endl;
+
+                std::cout << "Guess:" << std::endl;
+                std::cout << "rvec = " << rvec_ << std::endl;
+                std::cout << "tvec = " << tvec_ << std::endl;
+
+                save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
+                save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+
+                rclcpp::shutdown();
+                return;
+            }
         }
 
         if (start_vo_)
@@ -109,7 +145,7 @@ private:
             bool success = false;
             cv::Mat rvec_guess = rvec_.clone();
             cv::Mat tvec_guess = tvec_.clone();
-            success = loc::compute_local_pose(camera_matrix_L_, dist_coeffs_L_, matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec_guess, tvec_guess);
+            success = loc::compute_local_pose(camera_matrix_L_rect_, cv::Mat(), matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec_guess, tvec_guess);
 
             if (success)
             {
@@ -125,7 +161,7 @@ private:
 
                 if (std::abs(cv::norm(tvec_) - cv::norm(tvec_guess)) > max_expected_distance + tolerance)
                 {
-                    RCLCPP_WARN(this->get_logger(), "Computed local pose is invalid. Translation magnitude exceeds the expected value.");
+                    RCLCPP_ERROR(this->get_logger(), "Computed local pose is invalid. Translation magnitude exceeds the expected value.");
 
                     save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                     save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
@@ -137,6 +173,9 @@ private:
                     std::cout << "Result:" << std::endl;
                     std::cout << "rvec = " << rvec_guess << std::endl;
                     std::cout << "tvec = " << tvec_guess << std::endl;
+
+                    rclcpp::shutdown();
+                    return;
                 }
                 
                 rvec_ = rvec_guess;
@@ -146,7 +185,7 @@ private:
                 double total_rotation = cv::norm(rvec_); // unit: [rad]
 
                 // Keyframe slection
-                if ((keyframe_distance / average_depth) > 0.07 || total_rotation > 5 * CV_PI / 180)
+                if ((((keyframe_distance / average_depth) > 0.07 || total_rotation > 5 * CV_PI / 180)) && keyframe_distance > 50)
                 {
                     // Convert rvec to a rotation matrix
                     cv::Mat R;
@@ -186,12 +225,17 @@ private:
             }
             else
             {
-                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute local pose). Reinitializing global pose.");
-                start_vo_ = false;
-                path_points_.clear();
+                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute local pose).");
 
                 save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                 save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+
+                std::cout << "Guess:" << std::endl;
+                std::cout << "rvec = " << rvec_ << std::endl;
+                std::cout << "tvec = " << tvec_ << std::endl;
+
+                rclcpp::shutdown();
+                return;
             }
         }
         else
@@ -217,9 +261,9 @@ private:
             tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
         }
 
-        // Display the updated trajectory
-        cv::imshow("Estimated Path", path_image_);
-        cv::waitKey(1);
+        // Publish image with estimated path
+        sensor_msgs::msg::Image::SharedPtr msg_img = cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", path_image_).toImageMsg();
+        path_img_publisher_.publish(*msg_img);
 
         callback_count_++;
 
@@ -299,9 +343,12 @@ private:
         }
     }
 
-    // Subscription objects for left and right stereo images
-    message_filters::Subscriber<sensor_msgs::msg::Image> left_subscriber_;
-    message_filters::Subscriber<sensor_msgs::msg::Image> right_subscriber_;
+    // Publisher for path images
+    image_transport::Publisher path_img_publisher_;
+
+    // Subscribers for left and right stereo images)
+    image_transport::SubscriberFilter left_subscriber_;
+    image_transport::SubscriberFilter right_subscriber_;
 
     // Pointer for the Synchronizer
     std::shared_ptr<approximate_time_synchronizer> time_sync_;
@@ -310,14 +357,14 @@ private:
     rclcpp::TimerBase::SharedPtr timer_;
 
     // Stereo camera params
-    cv::Mat camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, P_L_;
+    cv::Mat camera_matrix_L_, camera_matrix_L_rect_, dist_coeffs_L_, map_1_L_, map_2_L_, P_L_;
     cv::Mat camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, P_R_;
     cv::Mat T_;
     cv::Mat Q_;
 
     // ORB detector
     cv::Ptr<cv::ORB> orb_ = cv::ORB::create(
-        3000,                  // nfeatures
+        1400,                  // nfeatures
         1.2f,                  // scaleFactor
         8,                     // nlevels
         25,                    // edgeThreshold
@@ -325,7 +372,7 @@ private:
         2,                     // WTA_K
         cv::ORB::HARRIS_SCORE, // scoreType
         31,                    // patchSize
-        10                     // fastThreshold
+        12                     // fastThreshold
     );
 
     // Descriptor matcher
@@ -357,25 +404,18 @@ private:
 
 int main(int argc, char **argv)
 {
-    // Create a named window for visualization
-    cv::namedWindow("Estimated Path", cv::WINDOW_AUTOSIZE);
-
-    // Window is white by default
-    cv::imshow("Estimated Path", cv::Mat(600, 600, CV_8UC3, cv::Scalar(255, 255, 255)));
-    cv::waitKey(10);
-
     // Initialize ROS 2 node
     rclcpp::init(argc, argv);
     auto node = std::make_shared<AutonomousNavigator>();
+
+    image_transport::ImageTransport it(node);
+    node->initialize_publishers(it);
 
     // Spin the node
     rclcpp::spin(node);
 
     // Shutdown ROS 2 node
     rclcpp::shutdown();
-
-    // Destroy the window when the node exits
-    cv::destroyWindow("Estimated Path");
 
     return 0;
 }

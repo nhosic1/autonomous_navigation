@@ -1,8 +1,9 @@
 #include <opencv2/opencv.hpp>
+#include "autonomous_navigation/localization.hpp"
 
 namespace loc
 {
-    void filter_points_with_RANSAC(const std::vector<cv::Point2d> &points_1, const std::vector<cv::Point2d> &points_2, const cv::Mat& camera_matrix, std::vector<cv::Point2d> &points_1_filtered, std::vector<cv::Point2d> &points_2_filtered, double confidence = 0.99, double reproj_threshold = 1.0)
+    void filter_points_with_RANSAC(const std::vector<cv::Point2d> &points_1, const std::vector<cv::Point2d> &points_2, const cv::Mat& camera_matrix, std::vector<cv::Point2d> &points_1_filtered, std::vector<cv::Point2d> &points_2_filtered, double confidence, double reproj_threshold)
     {
         // Use RANSAC to compute the essential matrix and filter outliers
         std::vector<uchar> inliers_mask;
@@ -40,7 +41,7 @@ namespace loc
         }
 
         // Filter matches using Lowe's ratio test
-        const float ratio_threshold = 0.75f;
+        const float ratio_threshold = 0.8f;
         std::set<int> unique_train_ids;
         std::vector<cv::Point2d> points_1, points_2;
 
@@ -85,8 +86,8 @@ namespace loc
                 if (point_2D == point_2D_matched_prev)
                 {
                     // Ignore matched points inconsistent with estimated position
-                    const cv::Point2d point_2D_proj(static_cast<double>(points_2D_proj[i].x), static_cast<double>(points_2D_proj[i].y));;
-                    if (cv::norm(point_2D_matched - point_2D_proj) < 40.0)
+                    const cv::Point2d point_2D_proj(static_cast<double>(points_2D_proj[i].x), static_cast<double>(points_2D_proj[i].y));
+                    if (cv::norm(point_2D_matched - point_2D_proj) < 100.0)
                     {
                         points_2D_pnp.push_back(point_2D_matched);
                         points_3D_pnp.push_back(points_3D[i]);

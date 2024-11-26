@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/image_encodings.hpp>
+#include <image_transport/image_transport.hpp>
 #include <sys/mman.h>
 #include <libcamera/libcamera.h>
 
@@ -13,8 +14,6 @@ public:
     {
         this->declare_parameter("camera_id", 0);
         camera_id_ = this->get_parameter("camera_id").as_int();
-        std::string topic_name = "~/camera_" + std::to_string(camera_id_) + "/image";
-        FramePublisher::image_publisher_ = this->create_publisher<sensor_msgs::msg::Image>(topic_name, 10);
 
         // Frame size params
         const int frame_width = 768;
@@ -28,13 +27,16 @@ public:
         camera_ = cm_->get(camera_str_id);
         camera_->acquire();
 
-        // Configure the camera with the StillCapture stream
-        std::unique_ptr<CameraConfiguration> config = camera_->generateConfiguration({StreamRole::StillCapture});
+        // Configure the camera with the Viewfinder stream
+        std::unique_ptr<CameraConfiguration> config = camera_->generateConfiguration({StreamRole::Viewfinder});
         StreamConfiguration &stream_config = config->at(0);
 
         stream_config.size.width = frame_width;
         stream_config.size.height = frame_height;
         stream_config.pixelFormat = formats::RGB888;
+
+        // Rotate image
+        config->orientation = Orientation::Rotate180;
 
         // Validate the config (original config might be modified, if invalid)
         config->validate();
@@ -50,8 +52,8 @@ public:
         int allocated_buffer_count = allocator_->buffers(stream_).size();
         RCLCPP_INFO(this->get_logger(), "Allocated buffers: %d", allocated_buffer_count);
 
-        long min_frame_duration = 25000; // microseconds
-        long max_frame_duration = 25000; // microseconds
+        long min_frame_duration = 30000; // microseconds
+        long max_frame_duration = 30000; // microseconds
 
         for (const std::unique_ptr<libcamera::FrameBuffer> &buffer : allocator_->buffers(stream_))
         {
@@ -62,11 +64,14 @@ public:
                 RCLCPP_ERROR(this->get_logger(), "Failed to set buffer for frame request");
             }
 
-            // Set frame rate to 40 Hz
+            // Set frame rate to 33.33 Hz
             request->controls().set(controls::FrameDurationLimits, Span<const std::int64_t, 2>({min_frame_duration, max_frame_duration}));
 
             // Disable autofocus
             request->controls().set(controls::AfMode, controls::AfModeManual);
+
+            // Set short exposure time to reduce motion blur
+            request->controls().set(controls::ExposureTime, 20000);
 
             requests_.push_back(std::move(request));
         }
@@ -76,12 +81,6 @@ public:
 
         // Connect processing slot to requestCompleted signal
         camera_->requestCompleted.connect(this, &FramePublisher::process_request);
-
-        // Start capturing frames
-        camera_->start();
-
-        for (std::unique_ptr<Request> &request : requests_)
-            camera_->queueRequest(request.get());
     }
 
     ~FramePublisher()
@@ -92,6 +91,20 @@ public:
         camera_->release();
         camera_.reset();
         cm_->stop();
+    }
+
+    void initialize_publishing(image_transport::ImageTransport &it)
+    {
+        // Create image publisher
+        std::string topic_name = "~/camera_" + std::to_string(camera_id_) + "/image";
+        image_publisher_ = it.advertise(topic_name, 1);
+
+        // Start capturing frames
+        camera_->start();
+
+        // Queue requests to the camera   
+        for (std::unique_ptr<Request> &request : requests_)
+            camera_->queueRequest(request.get());
     }
 
 private:
@@ -146,7 +159,7 @@ private:
             }
 
             // Publish image message
-            image_publisher_->publish(msg_img);
+            image_publisher_.publish(msg_img);
 
             // Unmap the buffer
             munmap(data, buffer_length);
@@ -163,7 +176,7 @@ private:
     Stream *stream_;
     FrameBufferAllocator *allocator_;
     std::vector<std::unique_ptr<Request>> requests_;
-    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_publisher_;
+    image_transport::Publisher image_publisher_;
 };
 
 int main(int argc, char **argv)
@@ -171,6 +184,9 @@ int main(int argc, char **argv)
     rclcpp::init(argc, argv);
 
     auto node = std::make_shared<FramePublisher>();
+
+    image_transport::ImageTransport it(node);
+    node->initialize_publishing(it);
 
     rclcpp::spin(node);
     rclcpp::shutdown();
