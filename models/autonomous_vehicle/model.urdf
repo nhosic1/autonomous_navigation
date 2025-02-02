@@ -1,0 +1,113 @@
+<?xml version="1.0" ?>
+<robot name="autonomous_vehicle">
+  <!-- links section -->
+  <link name="chassis">
+    <visual>
+      <geometry>
+        <box size="0.6 0.1 0.2"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <link name="front_left_wheel">
+    <visual>
+      <geometry>
+        <cylinder length="0.6" radius="0.2"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <link name="rear_left_wheel">
+    <visual>
+      <geometry>
+        <cylinder length="0.6" radius="0.2"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <link name="front_right_wheel">
+    <visual>
+      <geometry>
+        <cylinder length="0.6" radius="0.2"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <link name="rear_right_wheel">
+    <visual>
+      <geometry>
+        <cylinder length="0.6" radius="0.2"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <linke name="front_left_wheel_steering_link">
+    <visual>
+      <geometry>
+        <cylinder length="0.6" radius="0.2"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <linke name="front_right_wheel_steering_link">
+    <visual>
+      <geometry>
+        <cylinder length="0.6" radius="0.2"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <link name="left_camera_link">
+    <visual>
+      <geometry>
+        <cylinder length="0.6" radius="0.2"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <link name="right_camera_link">
+    <visual>
+      <geometry>
+        <cylinder length="0.6" radius="0.2"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <link name="rear_axle_midpoint">
+    <visual>
+      <geometry>
+        <sphere radius="0.2"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <!-- joints section -->
+  <joint name="front_left_wheel_steering_joint" type="revolute">
+  </joint>
+
+  <joint name="front_right_wheel_steering_joint" type="revolute">
+  </joint>
+
+  <joint name="front_left_wheel_joint" type="revolute">
+  </joint>
+
+  <joint name="front_right_wheel_joint" type="revolute">
+  </joint>
+
+  <joint name="rear_left_wheel_joint" type="revolute">
+  </joint>
+
+  <joint name="rear_right_wheel_joint" type="revolute">
+  </joint>
+
+  <joint name="left_camera_joint" type="fixed">
+  </joint>
+
+  <joint name="right_camera_joint" type="fixed">
+  </joint>
+
+  <joint name="rear_axle_joint" type="fixed">
+  </joint>
+
+  <!-- plugins section -->
+</robot>

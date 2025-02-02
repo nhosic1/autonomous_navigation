@@ -25,7 +25,7 @@ namespace loc
     // Accepts descriptor matcher compatible with ORB descriptors
     // Accepts ORB keypoints and descriptors
     // Accepts 2D and 3D points relative to the previous camera position
-    // Outputs rvec and tvec have CV_64F data type
+    // Outputs rvec and tvec have CV_64F data type and transform 3D points from world frame to camera frame
     bool compute_local_pose(cv::Mat camera_matrix, cv::Mat dist_coeffs, const cv::Ptr<cv::DescriptorMatcher> &matcher, const std::vector<cv::KeyPoint> &keypoints_prev, const cv::Mat &descriptors_prev, const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors, const std::vector<cv::Point2d> &points_2D, const std::vector<cv::Point3d> &points_3D, cv::Mat &rvec, cv::Mat &tvec)
     {
         std::vector<std::vector<cv::DMatch>> matches;

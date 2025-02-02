@@ -2,6 +2,8 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <geometry_msgs/msg/point.hpp>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/subscriber_filter.hpp>
@@ -10,6 +12,9 @@
 #include <filesystem>
 #include <cmath>
 #include <chrono>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include "autonomous_navigation/stereo_processing.hpp"
 #include "autonomous_navigation/localization.hpp"
 
@@ -41,6 +46,9 @@ public:
 
         camera_matrix_L_rect_ = P_L_(cv::Rect(0, 0, 3, 3)).clone();
 
+        // Create odometry publisher
+        odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>("/autonomous_vehicle/odometry", 10);
+
         // Create subscribers for left and right stereo image topics
         left_subscriber_.subscribe(this, "/left_camera/image", "raw");
         right_subscriber_.subscribe(this, "/right_camera/image", "raw");
@@ -48,18 +56,12 @@ public:
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
         time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 35000000)); // 0.035 sec
-        time_sync_->registerCallback(std::bind(&AutonomousNavigator::imageCallback, this, std::placeholders::_1, std::placeholders::_2));
-    }
-
-    void initialize_publishers(image_transport::ImageTransport &it)
-    {
-        // Create path image publisher
-        path_img_publisher_ = it.advertise("~/path_image", 1);
+        time_sync_->registerCallback(std::bind(&AutonomousNavigator::image_callback, this, std::placeholders::_1, std::placeholders::_2));
     }
 
 private:
     // Callback function for synchronized left and right stereo images
-    void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr, const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr)
+    void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr, const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr)
     {
         auto timestamp = std::chrono::steady_clock::now();
 
@@ -107,7 +109,6 @@ private:
         {
             RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (not enough detected features).");
             start_vo_ = false;
-            path_points_.clear();
 
             save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
             save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
@@ -123,7 +124,6 @@ private:
             {
                 RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute 3D points).");
                 start_vo_ = false;
-                path_points_.clear();
 
                 std::cout << "descriptors L:" << descriptors_L.size() << std::endl;
                 std::cout << "descriptors R:" << descriptors_R.size() << std::endl;
@@ -191,7 +191,7 @@ private:
                     cv::Mat R;
                     cv::Rodrigues(rvec_, R);
 
-                    // Invert rotation and translation to represent camera's pose relative to 3D points
+                    // Invert rotation and translation to represent camera's motion in world frame (3D points are static)
                     cv::Mat R_inv = R.t();
                     cv::Mat tvec_inv = -R_inv * tvec_;
 
@@ -203,14 +203,6 @@ private:
 
                     // Update the global pose
                     global_pose_ = global_pose_ * local_pose;
-
-                    double x = global_pose_.at<double>(0, 3); // X coordinate (camera coordinate system)
-                    double z = global_pose_.at<double>(2, 3); // Z coordinate (camera coordinate system)
-
-                    cv::Point2d path_point(x, z);
-                    path_points_.push_back(path_point);
-
-                    loc::draw_path(path_points_, path_image_);
 
                     // Update class members for next iteration
                     keypoints_L_prev_ = keypoints_L;
@@ -242,12 +234,6 @@ private:
         {
             start_vo_ = true;
             global_pose_ = cv::Mat::eye(4, 4, CV_64F);
-        
-            // Add initial position
-            cv::Point2d path_point(0.0, 0.0);
-            path_points_.push_back(path_point);
-
-            loc::draw_path(path_points_, path_image_);
 
             // Update class members for next iteration
             keypoints_L_prev_ = keypoints_L;
@@ -261,9 +247,32 @@ private:
             tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
         }
 
-        // Publish image with estimated path
-        sensor_msgs::msg::Image::SharedPtr msg_img = cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", path_image_).toImageMsg();
-        path_img_publisher_.publish(*msg_img);
+        // Create odometry msg from global pose
+        double x = global_pose_.at<double>(0, 3); // X coordinate (camera coordinate system)
+        double y = global_pose_.at<double>(2, 3); // Z coordinate (camera coordinate system)
+        double z = global_pose_.at<double>(1, 3); // Y coordinate (camera coordinate system)
+
+        tf2::Matrix3x3 R_cam_cs(
+            global_pose_.at<double>(0, 0), global_pose_.at<double>(0, 1), global_pose_.at<double>(0, 2),
+            global_pose_.at<double>(1, 0), global_pose_.at<double>(1, 1), global_pose_.at<double>(1, 2),
+            global_pose_.at<double>(2, 0), global_pose_.at<double>(2, 1), global_pose_.at<double>(2, 2)
+        );
+
+        double roll, pitch, yaw;
+        R_cam_cs.getRPY(roll, pitch, yaw);
+
+        tf2::Quaternion Q_world_cs;
+        Q_world_cs.setRPY(yaw, -roll, -pitch);
+
+        auto odom_msg = nav_msgs::msg::Odometry();
+        odom_msg.child_frame_id = "world";
+        odom_msg.pose.pose.position.x = x;
+        odom_msg.pose.pose.position.y = y;
+        odom_msg.pose.pose.position.z = z;
+        odom_msg.pose.pose.orientation = tf2::toMsg(Q_world_cs);
+
+        // Publish odometry msg
+        odom_publisher_->publish(odom_msg);
 
         callback_count_++;
 
@@ -343,8 +352,8 @@ private:
         }
     }
 
-    // Publisher for path images
-    image_transport::Publisher path_img_publisher_;
+    // Odometry publisher
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_publisher_;
 
     // Subscribers for left and right stereo images)
     image_transport::SubscriberFilter left_subscriber_;
@@ -392,10 +401,6 @@ private:
     cv::Mat rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
     cv::Mat tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
 
-    // Path image
-    cv::Mat path_image_;
-    std::vector<cv::Point2d> path_points_;
-
     // Keyframe timestamp
     std::chrono::time_point<std::chrono::steady_clock> timestamp_prev_;
 
@@ -407,9 +412,6 @@ int main(int argc, char **argv)
     // Initialize ROS 2 node
     rclcpp::init(argc, argv);
     auto node = std::make_shared<AutonomousNavigator>();
-
-    image_transport::ImageTransport it(node);
-    node->initialize_publishers(it);
 
     // Spin the node
     rclcpp::spin(node);

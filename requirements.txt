@@ -4,3 +4,5 @@ docutils<19.0
 sphinx-needs==2.0.0
 sphinxcontrib-plantuml==0.28
 esbonio==0.12.0
+opencv-python==4.5.4.60
+matplotlib==3.5.1
