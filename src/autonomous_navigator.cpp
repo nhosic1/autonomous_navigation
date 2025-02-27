@@ -15,6 +15,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_ros/transform_broadcaster.h>
 #include "autonomous_navigation/stereo_processing.hpp"
 #include "autonomous_navigation/localization.hpp"
 
@@ -41,6 +42,9 @@ public:
         std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
         std::string stereo_camera_params_path = package_share_directory + "/config/stereo_camera_params.yaml";
 
+        // Initialize the transform broadcaster
+        tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
         // Load params for stereo camera
         sp::load_stereo_camera_parameters(stereo_camera_params_path, camera_matrix_L_, dist_coeffs_L_, map_1_L_, map_2_L_, P_L_, camera_matrix_R_, dist_coeffs_R_, map_1_R_, map_2_R_, P_R_, T_, Q_);
 
@@ -50,8 +54,8 @@ public:
         odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>("/autonomous_vehicle/odometry", 10);
 
         // Create subscribers for left and right stereo image topics
-        left_subscriber_.subscribe(this, "/left_camera/image", "raw");
-        right_subscriber_.subscribe(this, "/right_camera/image", "raw");
+        left_subscriber_.subscribe(this, "/autonomous_vehicle/left_camera/image", "raw");
+        right_subscriber_.subscribe(this, "/autonomous_vehicle/right_camera/image", "raw");
 
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
@@ -229,6 +233,55 @@ private:
                 rclcpp::shutdown();
                 return;
             }
+
+            // Create odometry msg from global pose
+            double x = global_pose_.at<double>(2, 3) / 1000.0; // Z coordinate (camera coordinate system), unit: [m]
+            double y = - global_pose_.at<double>(0, 3) / 1000.0; // X coordinate (camera coordinate system), unit: [m]
+            double z = global_pose_.at<double>(1, 3) / 1000.0; // Y coordinate (camera coordinate system), unit: [m]
+
+            tf2::Matrix3x3 R_cam_cs(
+                global_pose_.at<double>(0, 0), global_pose_.at<double>(0, 1), global_pose_.at<double>(0, 2),
+                global_pose_.at<double>(1, 0), global_pose_.at<double>(1, 1), global_pose_.at<double>(1, 2),
+                global_pose_.at<double>(2, 0), global_pose_.at<double>(2, 1), global_pose_.at<double>(2, 2)
+            );
+
+            double roll, pitch, yaw;
+            R_cam_cs.getRPY(roll, pitch, yaw);
+
+            tf2::Quaternion Q_world_cs;
+            Q_world_cs.setRPY(yaw, -roll, -pitch);
+
+            std_msgs::msg::Header header;
+            header.stamp = this->get_clock()->now();
+            header.frame_id = "autonomous_vehicle/odom";
+
+            auto odom_msg = nav_msgs::msg::Odometry();
+            odom_msg.header = header;
+            odom_msg.child_frame_id = "autonomous_vehicle/base_link";
+            odom_msg.pose.pose.position.x = x;
+            odom_msg.pose.pose.position.y = y;
+            odom_msg.pose.pose.position.z = z;
+            odom_msg.pose.pose.orientation = tf2::toMsg(Q_world_cs);
+
+            // Publish odometry msg
+            odom_publisher_->publish(odom_msg);
+
+            geometry_msgs::msg::TransformStamped t;
+            t.header.stamp = this->get_clock()->now();
+            t.header.frame_id = "autonomous_vehicle/odom";
+            t.child_frame_id = "base_link";
+
+            t.transform.translation.x = x;
+            t.transform.translation.y = y;
+            t.transform.translation.z = z;
+
+            t.transform.rotation.x = Q_world_cs.x();
+            t.transform.rotation.y = Q_world_cs.y();
+            t.transform.rotation.z = Q_world_cs.z();
+            t.transform.rotation.w = Q_world_cs.w();
+
+            // Send the transformation
+            tf_broadcaster_->sendTransform(t);
         }
         else
         {
@@ -246,33 +299,6 @@ private:
             rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
             tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
         }
-
-        // Create odometry msg from global pose
-        double x = global_pose_.at<double>(0, 3); // X coordinate (camera coordinate system)
-        double y = global_pose_.at<double>(2, 3); // Z coordinate (camera coordinate system)
-        double z = global_pose_.at<double>(1, 3); // Y coordinate (camera coordinate system)
-
-        tf2::Matrix3x3 R_cam_cs(
-            global_pose_.at<double>(0, 0), global_pose_.at<double>(0, 1), global_pose_.at<double>(0, 2),
-            global_pose_.at<double>(1, 0), global_pose_.at<double>(1, 1), global_pose_.at<double>(1, 2),
-            global_pose_.at<double>(2, 0), global_pose_.at<double>(2, 1), global_pose_.at<double>(2, 2)
-        );
-
-        double roll, pitch, yaw;
-        R_cam_cs.getRPY(roll, pitch, yaw);
-
-        tf2::Quaternion Q_world_cs;
-        Q_world_cs.setRPY(yaw, -roll, -pitch);
-
-        auto odom_msg = nav_msgs::msg::Odometry();
-        odom_msg.child_frame_id = "world";
-        odom_msg.pose.pose.position.x = x;
-        odom_msg.pose.pose.position.y = y;
-        odom_msg.pose.pose.position.z = z;
-        odom_msg.pose.pose.orientation = tf2::toMsg(Q_world_cs);
-
-        // Publish odometry msg
-        odom_publisher_->publish(odom_msg);
 
         callback_count_++;
 
@@ -400,6 +426,9 @@ private:
     // Initial guess for rotation (rvec) and translation (tvec)
     cv::Mat rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
     cv::Mat tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
+
+    // Transform broadcaster
+    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
     // Keyframe timestamp
     std::chrono::time_point<std::chrono::steady_clock> timestamp_prev_;

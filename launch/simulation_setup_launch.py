@@ -9,7 +9,7 @@ import os
 def generate_launch_description():
     package_share_dir = get_package_share_directory("autonomous_navigation")
     config_path = os.path.join(package_share_dir, "config", "ros_gz_bridge_config.yaml")
-    model_path = os.path.join(package_share_dir, "models", "autonomous_vehicle")
+    model_path = os.path.join(package_share_dir, "models", "autonomous_vehicle", "model.urdf")
     world_path = os.path.join(
         package_share_dir, "worlds", "autonomous_navigation_world.sdf"
     )
@@ -31,7 +31,7 @@ def generate_launch_description():
             Node(
                 package="ros_gz_sim",
                 executable="create",
-                arguments=["-file", model_path, "-z", "0.325"],
+                arguments=["-file", model_path, "-z", "0.15"],
             ),
             Node(
                 package="ros_gz_bridge",

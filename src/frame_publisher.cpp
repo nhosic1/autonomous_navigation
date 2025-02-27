@@ -135,7 +135,7 @@ private:
 
             // send image data
             std_msgs::msg::Header hdr;
-            hdr.stamp = rclcpp::Time(int64_t(metadata.timestamp));
+            hdr.stamp = rclcpp::Clock().now();
             hdr.frame_id = "camera_" + std::to_string(camera_id_);
             const libcamera::StreamConfiguration &stream_cfg = stream->configuration();
 
