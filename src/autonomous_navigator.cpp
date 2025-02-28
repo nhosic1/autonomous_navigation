@@ -37,10 +37,13 @@ public:
 
         this->declare_parameter("snapshot", false);
         this->declare_parameter("data_folder", "");
+        this->declare_parameter("sim", false);
 
         std::string package_name = "autonomous_navigation";
         std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
-        std::string stereo_camera_params_path = package_share_directory + "/config/stereo_camera_params.yaml";
+
+        bool sim = this->get_parameter("sim").as_bool();
+        std::string stereo_camera_params_path = package_share_directory + "/config/" + (sim ? "sim_stereo_camera_params.yaml" : "stereo_camera_params.yaml");
 
         // Initialize the transform broadcaster
         tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
