@@ -46,8 +46,8 @@
   gz_type_name: "ignition.msgs.Model"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/autonomous_vehicle/odometry"
-  gz_topic_name: "/model/autonomous_vehicle/odometry"
-  ros_type_name: "nav_msgs/msg/Odometry"
-  gz_type_name: "ignition.msgs.Odometry"
-  direction: GZ_TO_ROS
+# - ros_topic_name: "/autonomous_vehicle/odometry"
+#   gz_topic_name: "/model/autonomous_vehicle/odometry"
+#   ros_type_name: "nav_msgs/msg/Odometry"
+#   gz_type_name: "ignition.msgs.Odometry"
+#   direction: GZ_TO_ROS

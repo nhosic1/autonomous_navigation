@@ -11,8 +11,6 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include "autonomous_navigation/pid_controller.hpp"
 #include "autonomous_navigation/pure_pursuit.hpp"
-
-
 #include "autonomous_navigation/vehicle_constants.hpp"
 
 typedef message_filters::sync_policies::ApproximateTime<nav_msgs::msg::Odometry, sensor_msgs::msg::JointState> approximate_time_policy;
