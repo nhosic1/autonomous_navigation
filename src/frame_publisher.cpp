@@ -115,7 +115,6 @@ private:
         {
             const Stream *stream = buffer_pair.first;
             FrameBuffer *buffer = buffer_pair.second;
-            const FrameMetadata &metadata = buffer->metadata();
 
             // Planes of the same buffer should use the same file descriptor
             size_t buffer_length = 0;
