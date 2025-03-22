@@ -2,13 +2,16 @@
 <robot name="autonomous_vehicle">
   <!-- materials section -->
   <material name="offwhite">
-    <color rgba="1.0 1.0 0.8941176470588236 1.0" />
+    <color rgba="1.0 1.0 0.8941176470588236 1.0"/>
   </material>
   <material name="black">
     <color rgba="0 0 0 1"/>
   </material>
   <material name="white">
     <color rgba="1 1 1 1"/>
+  </material>
+  <material name="aquablue">
+    <color rgba="0.00784313725490196 0.8470588235294118 0.9137254901960784 1.0"/>
   </material>
 
   <!-- links section -->
@@ -258,6 +261,26 @@
     </sensor>
   </gazebo>
 
+  <link name="imu_sensor">
+    <visual>
+      <geometry>
+        <sphere radius="0.02"/>
+      </geometry>
+      <material name="aquablue"/>
+    </visual>
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.0113" ixy="0.0" ixz="0.0" iyy="0.0113" iyz="0.0" izz="0.0001"/>
+    </inertial>
+  </link>
+  <gazebo reference="imu_sensor">
+    <sensor name="imu_sensor" type="imu">
+      <always_on>1</always_on>
+      <update_rate>50</update_rate>
+      <visualize>true</visualize>
+    </sensor>
+  </gazebo>
+
   <!-- joints section -->
   <joint name="dummy_base_link_joint" type="fixed">
     <parent link="base_link"/>
@@ -339,6 +362,12 @@
     <child link="right_camera"/>
   </joint>
 
+  <joint name="imu_sensor_joint" type="fixed">
+    <origin xyz="0.32 0 0.08" rpy="0 0 0"/>
+    <parent link="chassis"/>
+    <child link="imu_sensor"/>
+  </joint>
+
   <!-- plugins section -->
   <!-- <gazebo>
     <plugin
@@ -402,9 +431,7 @@
     <plugin
       filename="ignition-gazebo-ackermann-steering-system"
       name="gz::sim::systems::AckermannSteering">
-      <!-- <left_joint>front_left_wheel_joint</left_joint> -->
       <left_joint>rear_left_wheel_joint</left_joint>
-      <!-- <right_joint>front_right_wheel_joint</right_joint> -->
       <right_joint>rear_right_wheel_joint</right_joint>
       <left_steering_joint>front_left_wheel_steering_joint</left_steering_joint>
       <right_steering_joint>front_right_wheel_steering_joint</right_steering_joint>

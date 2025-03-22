@@ -42,13 +42,13 @@ if(NOT BUILD_RPI)
   add_library(pid_controller SHARED src/pid_controller.cpp)
 endif()
 
-add_executable(autonomous_navigator src/autonomous_navigator.cpp)
-target_link_libraries(autonomous_navigator stereo_processing localization)
-target_include_directories(autonomous_navigator PUBLIC
+add_executable(vo_estimator src/vo_estimator.cpp)
+target_link_libraries(vo_estimator stereo_processing localization)
+target_include_directories(vo_estimator PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-target_compile_features(autonomous_navigator PUBLIC c_std_99 cxx_std_17)
-ament_target_dependencies(autonomous_navigator rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV ament_index_cpp image_transport tf2 tf2_geometry_msgs)
+target_compile_features(vo_estimator PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(vo_estimator rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV ament_index_cpp image_transport tf2 tf2_geometry_msgs)
 
 if(BUILD_RPI)
   add_executable(frame_publisher src/frame_publisher.cpp)
@@ -104,7 +104,7 @@ install(TARGETS localization
   RUNTIME DESTINATION bin
 )
 
-install(TARGETS autonomous_navigator DESTINATION lib/${PROJECT_NAME})
+install(TARGETS vo_estimator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_camera_calibrator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_viewer DESTINATION lib/${PROJECT_NAME})
 install(TARGETS state_monitor DESTINATION lib/${PROJECT_NAME})
@@ -131,6 +131,7 @@ if(NOT BUILD_RPI)
 
   install(PROGRAMS
     scripts/state_monitor.py
+    scripts/imu_covariance_fixer.py
     DESTINATION lib/${PROJECT_NAME}
   )
 endif()

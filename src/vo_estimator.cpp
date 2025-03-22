@@ -21,15 +21,14 @@
 #include "tf2_ros/buffer.h"
 #include "autonomous_navigation/stereo_processing.hpp"
 #include "autonomous_navigation/localization.hpp"
-#include "autonomous_navigation/vehicle_constants.hpp"
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> approximate_time_policy;
 typedef message_filters::Synchronizer<approximate_time_policy> approximate_time_synchronizer;
 
-class AutonomousNavigator : public rclcpp::Node
+class VisualOdometryEstimator : public rclcpp::Node
 {
 public:
-    AutonomousNavigator() : Node("autonomous_navigator")
+    VisualOdometryEstimator() : Node("vo_estimator")
     {
         // Create a timer to check FPS
         timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]()
@@ -55,7 +54,14 @@ public:
         camera_matrix_L_rect_ = P_L_(cv::Rect(0, 0, 3, 3)).clone();
 
         // Create odometry publisher
-        odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>("/autonomous_vehicle/odometry", 10);
+        odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>("/autonomous_vehicle/odometry/visual", 10);
+
+        ekf_odom_subscription_ = this->create_subscription<nav_msgs::msg::Odometry>(
+            "/odometry/filtered", 10,
+            [this](const nav_msgs::msg::Odometry::ConstSharedPtr &msg)
+            {
+                latest_ekf_odom_ = msg;
+            });
 
         // Create subscribers for left and right stereo image topics
         left_subscriber_.subscribe(this, "/autonomous_vehicle/left_camera/image", "raw");
@@ -64,7 +70,7 @@ public:
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
         time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 35000000)); // 0.035 sec
-        time_sync_->registerCallback(std::bind(&AutonomousNavigator::image_callback, this, std::placeholders::_1, std::placeholders::_2));
+        time_sync_->registerCallback(std::bind(&VisualOdometryEstimator::image_callback, this, std::placeholders::_1, std::placeholders::_2));
 
         // Initialize transform broadcaster and listener
         tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
@@ -124,14 +130,12 @@ private:
 
         if (descriptors_L.empty() || descriptors_R.empty())
         {
-            RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (not enough detected features).");
-            start_vo_ = false;
+            RCLCPP_WARN(this->get_logger(), "Visual odometry chain is broken (not enough detected features). Resorting to estimating odometry with IMU sensor data.");
 
             save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
             save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
 
-            rclcpp::shutdown();
-            return;
+            start_vo_ = false;
         }
         else
         {
@@ -139,21 +143,12 @@ private:
 
             if (!success)
             {
-                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute 3D points).");
-                start_vo_ = false;
-
-                std::cout << "descriptors L:" << descriptors_L.size() << std::endl;
-                std::cout << "descriptors R:" << descriptors_R.size() << std::endl;
-
-                std::cout << "Guess:" << std::endl;
-                std::cout << "rvec = " << rvec_ << std::endl;
-                std::cout << "tvec = " << tvec_ << std::endl;
+                RCLCPP_WARN(this->get_logger(), "Visual odometry chain is broken (failed to compute 3D points). Resorting to estimating odometry with IMU sensor data.");
 
                 save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                 save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
 
-                rclcpp::shutdown();
-                return;
+                start_vo_ = false;
             }
         }
 
@@ -178,21 +173,12 @@ private:
 
                 if (std::abs(cv::norm(tvec_) - cv::norm(tvec_guess)) > max_expected_distance + tolerance)
                 {
-                    RCLCPP_ERROR(this->get_logger(), "Computed local pose is invalid. Translation magnitude exceeds the expected value.");
+                    RCLCPP_WARN(this->get_logger(), "Visual odometry chain is broken (translation magnitude exceeds the expected value). Resorting to estimating odometry with IMU sensor data.");
 
                     save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                     save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
 
-                    std::cout << "Guess:" << std::endl;
-                    std::cout << "rvec = " << rvec_ << std::endl;
-                    std::cout << "tvec = " << tvec_ << std::endl;
-
-                    std::cout << "Result:" << std::endl;
-                    std::cout << "rvec = " << rvec_guess << std::endl;
-                    std::cout << "tvec = " << tvec_guess << std::endl;
-
-                    rclcpp::shutdown();
-                    return;
+                    start_vo_ = false;
                 }
 
                 rvec_ = rvec_guess;
@@ -240,17 +226,12 @@ private:
             }
             else
             {
-                RCLCPP_ERROR(this->get_logger(), "Odometry chain is broken (failed to compute local pose).");
+                RCLCPP_WARN(this->get_logger(), "Visual odometry chain is broken (failed to compute local pose). Resorting to estimating odometry with IMU sensor data.");
 
                 save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                 save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
 
-                std::cout << "Guess:" << std::endl;
-                std::cout << "rvec = " << rvec_ << std::endl;
-                std::cout << "tvec = " << tvec_ << std::endl;
-
-                rclcpp::shutdown();
-                return;
+                start_vo_ = false;
             }
 
             std_msgs::msg::Header header;
@@ -269,6 +250,24 @@ private:
             tf2::Quaternion q_global = global_pose_.getRotation();
             odom_msg.pose.pose.orientation = tf2::toMsg(q_global);
 
+            odom_msg.pose.covariance = {
+                0.01, 0.0, 0.0, 0.0, 0.0, 0.0, // X
+                0.0, 0.01, 0.0, 0.0, 0.0, 0.0, // Y
+                0.0, 0.0, 0.2, 0.0, 0.0, 0.0,  // Z
+                0.0, 0.0, 0.0, 0.01, 0.0, 0.0, // Roll
+                0.0, 0.0, 0.0, 0.0, 0.01, 0.0, // Pitch
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.05  // Yaw
+            };
+
+            odom_msg.twist.covariance = {
+                0.3, 0.0, 0.0, 0.0, 0.0, 0.0, // Vx
+                0.0, 0.3, 0.0, 0.0, 0.0, 0.0, // Vy
+                0.0, 0.0, 0.4, 0.0, 0.0, 0.0, // Vz
+                0.0, 0.0, 0.0, 0.3, 0.0, 0.0, // Angular Vx
+                0.0, 0.0, 0.0, 0.0, 0.3, 0.0, // Angular Vy
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.3  // Angular Vz
+            };
+
             // Publish odometry msg
             odom_publisher_->publish(odom_msg);
 
@@ -281,10 +280,12 @@ private:
             T_msg.transform = tf2::toMsg(global_base_link_pose);
 
             // Send odom-base_link transformation
-            tf_broadcaster_->sendTransform(T_msg);
+            // tf_broadcaster_->sendTransform(T_msg);
         }
         else
         {
+            RCLCPP_INFO(this->get_logger(), "Starting visual odometry...");
+
             start_vo_ = true;
 
             // Update class members for next iteration
@@ -297,6 +298,11 @@ private:
             timestamp_prev_ = timestamp;
             rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
             tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
+
+            if (latest_ekf_odom_)
+            {
+                tf2::fromMsg(latest_ekf_odom_->pose.pose, global_pose_);
+            }
         }
 
         callback_count_++;
@@ -334,61 +340,11 @@ private:
         this->set_parameter(rclcpp::Parameter("snapshot", false));
     }
 
-    bool is_path_safe(const std::vector<cv::Point3d> &points, const double &max_depth = 2000)
-    {
-        // Define parameters (unit: [mm])
-        double robot_width = 1300.0;
-        double camera_height = 575.0;
-        double x_offset_compensation = 90.0; // Compensate for the left camera's x-axis offset from the robot's center, which is half of the stereo baseline
-        double side_safety_margin = 250.0;
-        double top_safety_margin = 400.0;
-        double ground_tolerance = 50.0;
-
-        for (const auto &point : points)
-        {
-            // Check if the point is in robot's way
-            if (point.z <= max_depth &&
-                std::abs(point.x + x_offset_compensation) <= (robot_width / 2) + side_safety_margin &&
-                point.y > -top_safety_margin &&
-                point.y + ground_tolerance < camera_height)
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    void find_closest_point(const std::vector<cv::Point3d> &points, cv::Point3d &closest_point)
-    {
-        // Define parameters (unit: [mm])
-        double camera_height = 575.0;
-        double ground_tolerance = 50.0;
-
-        // Initialize variables to track the closest point
-        double closest_z = std::numeric_limits<double>::max(); // Initialize with a large value
-
-        for (const auto &point : points)
-        {
-            if (point.z < closest_z && point.y + ground_tolerance < camera_height)
-            {
-                closest_z = point.z;
-                closest_point = point;
-            }
-        }
-    }
-
     tf2::Transform get_transform(const std::string &target_frame, const std::string &source_frame)
     {
         geometry_msgs::msg::TransformStamped T_msg;
         tf2::Transform T;
         T.setIdentity();
-
-        // if (!tf_buffer_->canTransform(target_frame, source_frame, tf2::TimePointZero, tf2::durationFromSec(0.5)))
-        // {
-        //     RCLCPP_WARN(this->get_logger(), "Transform from %s to %s not available after %.1f sec",
-        //                 source_frame.c_str(), target_frame.c_str(), 0.5);
-        //     return T;
-        // }
 
         try
         {
@@ -449,7 +405,11 @@ private:
     // Odometry publisher
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_publisher_;
 
-    // Subscribers for left and right stereo images)
+    // Subscriber for odometry messages from Extended Kalman Filter
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr ekf_odom_subscription_;
+    nav_msgs::msg::Odometry::ConstSharedPtr latest_ekf_odom_;
+
+    // Subscribers for left and right stereo images
     image_transport::SubscriberFilter left_subscriber_;
     image_transport::SubscriberFilter right_subscriber_;
 
@@ -515,7 +475,7 @@ int main(int argc, char **argv)
 {
     // Initialize ROS 2 node
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<AutonomousNavigator>();
+    auto node = std::make_shared<VisualOdometryEstimator>();
 
     // Spin the node
     rclcpp::spin(node);
