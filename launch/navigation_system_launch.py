@@ -46,31 +46,13 @@ def generate_launch_description():
     static_transform_publisher = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
-        # arguments=[
-        #     "--x",
-        #     "0.35",
-        #     "--y",
-        #     "0.09",
-        #     "--z",
-        #     "0.35",
-        #     "--yaw",
-        #     "0",
-        #     "--pitch",
-        #     "0",
-        #     "--roll",
-        #     "0",
-        #     "--frame-id",
-        #     "odom",
-        #     "--child-frame-id",
-        #     "odom_visual",
-        # ],
         arguments=[
             "--x",
-            "0",
+            "0.35",
             "--y",
-            "0",
+            "0.09",
             "--z",
-            "0",
+            "0.35",
             "--yaw",
             "0",
             "--pitch",
@@ -80,7 +62,7 @@ def generate_launch_description():
             "--frame-id",
             "odom",
             "--child-frame-id",
-            "base_link",
+            "odom_visual",
         ],
     )
 
@@ -112,7 +94,6 @@ def generate_launch_description():
             robot_state_publisher,
             joint_state_publisher,
             imu_covariance_fixer,
-            # static_transform_publisher,
             TimerAction(
                 period=0.2,
                 actions=[

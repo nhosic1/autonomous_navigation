@@ -7,6 +7,12 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/utils.h>
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Transform.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include "autonomous_navigation/pid_controller.hpp"
@@ -27,12 +33,17 @@ public:
         front_left_wheel_steering_ang_publisher_ = this->create_publisher<std_msgs::msg::Float64>("/autonomous_vehicle/front_left_wheel_steering_joint/cmd_pos", 10);
         front_right_wheel_steering_ang_publisher_ = this->create_publisher<std_msgs::msg::Float64>("/autonomous_vehicle/front_right_wheel_steering_joint/cmd_pos", 10);
 
-        odom_subscriber_.subscribe(this, "/autonomous_vehicle/odometry");
+        odom_subscriber_.subscribe(this, "/odometry/filtered");
         joint_state_subscriber_.subscribe(this, "/autonomous_vehicle/joint_state");
 
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), odom_subscriber_, joint_state_subscriber_);
-        // time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 35000000)); // 0.035 sec
         time_sync_->registerCallback(std::bind(&PathFollower::motion_control_callback, this, std::placeholders::_1, std::placeholders::_2));
+
+        tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+        tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+        T_base_to_rear_axle_ = get_transform("base_link", "rear_axle");
     }
 
 private:
@@ -47,13 +58,15 @@ private:
 
     void motion_control_callback(const nav_msgs::msg::Odometry::ConstSharedPtr &odom_msg_ptr, const sensor_msgs::msg::JointState::ConstSharedPtr &joint_state_msg_ptr)
     {
+        tf2::Transform pose_base;
+        tf2::fromMsg(odom_msg_ptr->pose.pose, pose_base);
+        tf2::Transform pose_rear_axle = pose_base * T_base_to_rear_axle_;
+
         // Get the current pose from odometry msg
-        double x = odom_msg_ptr->pose.pose.position.x;
-        double y = odom_msg_ptr->pose.pose.position.y;
+        double x = pose_rear_axle.getOrigin().x();
+        double y = pose_rear_axle.getOrigin().y();
 
-        geometry_msgs::msg::Quaternion Q = odom_msg_ptr->pose.pose.orientation;
-
-        tf2::Quaternion Q_tf2(Q.x, Q.y, Q.z, Q.w);
+        tf2::Quaternion Q_tf2 = pose_rear_axle.getRotation();
         double yaw = tf2::getYaw(Q_tf2);
 
         Pose current_pose(Point(x, y), yaw);
@@ -95,6 +108,42 @@ private:
         front_right_wheel_steering_ang_publisher_->publish(steering_ang_msg);
     }
 
+    tf2::Transform get_transform(const std::string &target_frame, const std::string &source_frame)
+    {
+        geometry_msgs::msg::TransformStamped T_msg;
+        tf2::Transform T;
+        T.setIdentity();
+
+        try
+        {
+            T_msg = tf_buffer_->lookupTransform(target_frame, source_frame, tf2::TimePointZero, tf2::durationFromSec(0.5));
+        }
+        catch (const tf2::TransformException &ex)
+        {
+            RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s: %s", target_frame.c_str(), source_frame.c_str(), ex.what());
+            return T;
+        }
+
+        // Convert translation
+        tf2::Vector3 t(
+            T_msg.transform.translation.x,
+            T_msg.transform.translation.y,
+            T_msg.transform.translation.z);
+
+        // Convert rotation (quaternion)
+        tf2::Quaternion q(
+            T_msg.transform.rotation.x,
+            T_msg.transform.rotation.y,
+            T_msg.transform.rotation.z,
+            T_msg.transform.rotation.w);
+
+        // Set translation and rotation to the tf2::Transform object
+        T.setOrigin(t);
+        T.setRotation(q);
+
+        return T;
+    }
+
     std::vector<Point> generate_figure_eight(double a = 11.0, double b = 11.0, double num_points = 100)
     {
         std::vector<Point> points;
@@ -123,6 +172,13 @@ private:
 
     std::vector<Point> path_ = generate_figure_eight();
     PurePursuitController pure_pursuit_controller_ = PurePursuitController(path_, 0.5, 1.9, 1.0);
+
+    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+
+    tf2::Transform T_base_to_rear_axle_;
 
     double current_steering_angle_;
     double current_linear_velocity_;

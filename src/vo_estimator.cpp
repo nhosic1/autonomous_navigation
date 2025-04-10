@@ -16,9 +16,6 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <tf2_ros/transform_broadcaster.h>
-#include <tf2_ros/transform_listener.h>
-#include "tf2_ros/buffer.h"
 #include "autonomous_navigation/stereo_processing.hpp"
 #include "autonomous_navigation/localization.hpp"
 
@@ -72,14 +69,8 @@ public:
         time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 35000000)); // 0.035 sec
         time_sync_->registerCallback(std::bind(&VisualOdometryEstimator::image_callback, this, std::placeholders::_1, std::placeholders::_2));
 
-        // Initialize transform broadcaster and listener
-        tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-        tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
-        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
-
         // Initialize transformation matrices
         global_pose_.setIdentity();
-        T_cam_to_base_ = get_transform("left_camera", "base_link");
     }
 
 private:
@@ -270,17 +261,6 @@ private:
 
             // Publish odometry msg
             odom_publisher_->publish(odom_msg);
-
-            geometry_msgs::msg::TransformStamped T_msg;
-            T_msg.header.stamp = this->get_clock()->now();
-            T_msg.header.frame_id = "odom";
-            T_msg.child_frame_id = "base_link";
-
-            tf2::Transform global_base_link_pose = global_pose_ * T_cam_to_base_;
-            T_msg.transform = tf2::toMsg(global_base_link_pose);
-
-            // Send odom-base_link transformation
-            // tf_broadcaster_->sendTransform(T_msg);
         }
         else
         {
@@ -338,42 +318,6 @@ private:
             RCLCPP_WARN(this->get_logger(), "Saving snapshots failed. Path to data folder is invalid.");
         }
         this->set_parameter(rclcpp::Parameter("snapshot", false));
-    }
-
-    tf2::Transform get_transform(const std::string &target_frame, const std::string &source_frame)
-    {
-        geometry_msgs::msg::TransformStamped T_msg;
-        tf2::Transform T;
-        T.setIdentity();
-
-        try
-        {
-            T_msg = tf_buffer_->lookupTransform(target_frame, source_frame, tf2::TimePointZero, tf2::durationFromSec(0.5));
-        }
-        catch (const tf2::TransformException &ex)
-        {
-            RCLCPP_INFO(this->get_logger(), "Could not transform %s to %s: %s", target_frame.c_str(), source_frame.c_str(), ex.what());
-            return T;
-        }
-
-        // Convert translation
-        tf2::Vector3 t(
-            T_msg.transform.translation.x,
-            T_msg.transform.translation.y,
-            T_msg.transform.translation.z);
-
-        // Convert rotation (quaternion)
-        tf2::Quaternion q(
-            T_msg.transform.rotation.x,
-            T_msg.transform.rotation.y,
-            T_msg.transform.rotation.z,
-            T_msg.transform.rotation.w);
-
-        // Set translation and rotation to the tf2::Transform object
-        T.setOrigin(t);
-        T.setRotation(q);
-
-        return T;
     }
 
     tf2::Transform convert_cam_to_rh_coordinate_sys(const tf2::Transform &T_cam_cs)
@@ -454,16 +398,6 @@ private:
     // Initial guess for rotation (rvec) and translation (tvec)
     cv::Mat rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
     cv::Mat tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
-
-    // Transform broadcaster
-    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-
-    // Transform buffer and listener
-    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
-
-    // Transformation matrices
-    tf2::Transform T_cam_to_base_;
 
     // Keyframe timestamp
     std::chrono::time_point<std::chrono::steady_clock> timestamp_prev_;

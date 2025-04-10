@@ -85,7 +85,7 @@ if (NOT BUILD_RPI)
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
   target_compile_features(path_follower PUBLIC c_std_99 cxx_std_17)
-  ament_target_dependencies(path_follower rclcpp std_msgs sensor_msgs nav_msgs message_filters OpenCV tf2)
+  ament_target_dependencies(path_follower rclcpp std_msgs sensor_msgs nav_msgs message_filters OpenCV tf2 tf2_geometry_msgs)
 endif()
 
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
