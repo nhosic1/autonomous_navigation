@@ -2,6 +2,9 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <message_filters/sync_policies/approximate_time.h>
@@ -25,7 +28,7 @@ typedef message_filters::Synchronizer<approximate_time_policy> approximate_time_
 class VisualOdometryEstimator : public rclcpp::Node
 {
 public:
-    VisualOdometryEstimator() : Node("vo_estimator")
+    VisualOdometryEstimator() : Node("visual_odom_estimator")
     {
         // Create a timer to check FPS
         timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]()
@@ -50,14 +53,29 @@ public:
 
         camera_matrix_L_rect_ = P_L_(cv::Rect(0, 0, 3, 3)).clone();
 
-        // Create odometry publisher
+        // Create publishers
         odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>("/autonomous_vehicle/odometry/visual", 10);
+        point_cloud_publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/autonomous_vehicle/stereo/pointcloud", 10);
 
         ekf_odom_subscription_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/odometry/filtered", 10,
             [this](const nav_msgs::msg::Odometry::ConstSharedPtr &msg)
             {
                 latest_ekf_odom_ = msg;
+            });
+
+        reset_odom_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
+            "reset_odom", 1,
+            [this](const std_msgs::msg::Bool::SharedPtr msg)
+            {
+                if (msg->data)
+                {
+                    reset_odom_ = true;
+                    bootstrap_complete_ = false;
+                    global_pose_prev_.setIdentity();
+
+                    RCLCPP_INFO(this->get_logger(), "Visual odometry reset.");
+                }
             });
 
         // Create subscribers for left and right stereo image topics
@@ -68,9 +86,6 @@ public:
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
         time_sync_->getPolicy()->setMaxIntervalDuration(rclcpp::Duration(0, 35000000)); // 0.035 sec
         time_sync_->registerCallback(std::bind(&VisualOdometryEstimator::image_callback, this, std::placeholders::_1, std::placeholders::_2));
-
-        // Initialize transformation matrices
-        global_pose_.setIdentity();
     }
 
 private:
@@ -126,67 +141,70 @@ private:
             save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
             save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
 
-            start_vo_ = false;
+            bootstrap_complete_ = false;
         }
         else
         {
             bool success = sp::compute_3D_points_from_features(matcher_, P_L_, keypoints_L, descriptors_L, P_R_, keypoints_R, descriptors_R, points_3D_stereo, points_2D_stereo, average_depth);
 
-            if (!success)
+            if (success)
+            {
+
+                sensor_msgs::msg::PointCloud2 point_cloud = convert_3D_points_to_PointCloud2(points_3D_stereo, "left_camera");
+                point_cloud_publisher_->publish(point_cloud);
+            }
+            else
             {
                 RCLCPP_WARN(this->get_logger(), "Visual odometry chain is broken (failed to compute 3D points). Resorting to estimating odometry with IMU sensor data.");
 
                 save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                 save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
 
-                start_vo_ = false;
+                bootstrap_complete_ = false;
             }
         }
 
-        if (start_vo_)
+        if (bootstrap_complete_)
         {
             bool success = false;
-            cv::Mat rvec_guess = rvec_.clone();
-            cv::Mat tvec_guess = tvec_.clone();
-            success = loc::compute_local_pose(camera_matrix_L_rect_, cv::Mat(), matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec_guess, tvec_guess);
+            cv::Mat rvec = rvec_guess_.clone();
+            cv::Mat tvec = tvec_guess_.clone();
+            success = loc::compute_local_pose(camera_matrix_L_rect_, cv::Mat(), matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec, tvec);
 
             if (success)
             {
-                double velocity = 0.5; // unit: [m/s]
+                auto duration = std::chrono::duration_cast<std::chrono::duration<double>>(timestamp - timestamp_prev_);
+                double dt = duration.count(); // unit: [s]
 
-                // Calculate time duration from previous frame
-                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(timestamp - timestamp_prev_);
-                double time_diff = duration.count(); // unit: [ms]
+                double keyframe_distance = cv::norm(tvec); // unit: [mm]
+                double total_rotation = cv::norm(rvec);    // unit: [rad]
 
-                // Calculate max expected distance
-                double max_expected_distance = velocity * time_diff; // unit: [mm]
-                double tolerance = 200;                              // unit: [mm]
+                double v = (keyframe_distance / 1000.0) / dt; // unit: [m/s]
 
-                if (std::abs(cv::norm(tvec_) - cv::norm(tvec_guess)) > max_expected_distance + tolerance)
+                if (std::abs(v) > v_max_)
                 {
-                    RCLCPP_WARN(this->get_logger(), "Visual odometry chain is broken (translation magnitude exceeds the expected value). Resorting to estimating odometry with IMU sensor data.");
+                    // RCLCPP_WARN(this->get_logger(), "Estimated linear velocity exceeds the maximum expected value. Skipping this frame.");
 
-                    save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
-                    save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
+                    // save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
+                    // save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
 
-                    start_vo_ = false;
+                    return;
                 }
-
-                rvec_ = rvec_guess;
-                tvec_ = tvec_guess;
-                timestamp_prev_ = timestamp;
-                double keyframe_distance = cv::norm(tvec_); // unit: [mm]
-                double total_rotation = cv::norm(rvec_);    // unit: [rad]
+                else
+                {
+                    rvec_guess_ = rvec;
+                    tvec_guess_ = tvec;
+                }
 
                 // Keyframe slection
                 if ((((keyframe_distance / average_depth) > 0.07 || total_rotation > 5 * CV_PI / 180)) && keyframe_distance > 50)
                 {
                     // Convert rvec to a rotation matrix
                     cv::Mat R_cv;
-                    cv::Rodrigues(rvec_, R_cv);
+                    cv::Rodrigues(rvec, R_cv);
 
                     // Create transformation matrix for local pose in camera coordinate system (camera assumed to be static)
-                    tf2::Vector3 t_cam_cs(tvec_.at<double>(0, 0), tvec_.at<double>(1, 0), tvec_.at<double>(2, 0));
+                    tf2::Vector3 t_cam_cs(tvec.at<double>(0, 0), tvec.at<double>(1, 0), tvec.at<double>(2, 0));
                     tf2::Matrix3x3 R_cam_cs(R_cv.at<double>(0, 0), R_cv.at<double>(0, 1), R_cv.at<double>(0, 2),
                                             R_cv.at<double>(1, 0), R_cv.at<double>(1, 1), R_cv.at<double>(1, 2),
                                             R_cv.at<double>(2, 0), R_cv.at<double>(2, 1), R_cv.at<double>(2, 2));
@@ -198,11 +216,70 @@ private:
                     local_pose_cam_cs.setRotation(q_cam_cs);
 
                     // Invert rotation and translation to represent camera's motion in odometry frame (3D points are static)
-                    local_pose_cam_cs = local_pose_cam_cs.inverse();
+                    local_pose_cam_cs = local_pose_cam_cs.inverse(); // unit: [mm]
+                    local_pose_cam_cs.setOrigin(local_pose_cam_cs.getOrigin() * 0.001); // convert to meters
 
                     // Update the global pose
-                    tf2::Transform local_pose = convert_cam_to_rh_coordinate_sys(local_pose_cam_cs);
-                    global_pose_ = global_pose_ * local_pose;
+                    tf2::Transform local_pose = convert_cam_to_rh_coordinate_sys(local_pose_cam_cs); // unit: [m]
+                    tf2::Transform global_pose;
+                    global_pose = global_pose_prev_ * local_pose;
+
+                    // Publish the odometry message
+                    std_msgs::msg::Header header;
+                    header.stamp = this->get_clock()->now();
+                    header.frame_id = "odom";
+
+                    auto odom_msg = nav_msgs::msg::Odometry();
+                    odom_msg.header = header;
+                    odom_msg.child_frame_id = "left_camera";
+
+                    tf2::Vector3 t_global = global_pose.getOrigin();
+                    odom_msg.pose.pose.position.x = t_global.x();
+                    odom_msg.pose.pose.position.y = t_global.y();
+                    odom_msg.pose.pose.position.z = t_global.z();
+
+                    tf2::Quaternion q_global = global_pose.getRotation();
+                    odom_msg.pose.pose.orientation = tf2::toMsg(q_global);
+
+                    odom_msg.pose.covariance = {
+                        0.01, 0.0, 0.0, 0.0, 0.0, 0.0, // X
+                        0.0, 0.01, 0.0, 0.0, 0.0, 0.0, // Y
+                        0.0, 0.0, 0.2, 0.0, 0.0, 0.0,  // Z
+                        0.0, 0.0, 0.0, 0.1, 0.0, 0.0, // Roll
+                        0.0, 0.0, 0.0, 0.0, 0.1, 0.0, // Pitch
+                        0.0, 0.0, 0.0, 0.0, 0.0, 0.1  // Yaw
+                    };
+
+                    tf2::Vector3 t_local = local_pose.getOrigin();
+                    double v_x = t_local.x() / dt;
+                    double v_y = t_local.y() / dt;
+                    double v_z = t_local.z() / dt;
+
+                    tf2::Quaternion q_local = local_pose.getRotation();
+
+                    double angle = q_local.getAngle();
+                    tf2::Vector3 axis = q_local.getAxis();
+
+                    const double epsilon = 1e-6;
+                    tf2::Vector3 w = (angle < epsilon) ? tf2::Vector3(0, 0, 0) : axis * (angle / dt);
+
+                    odom_msg.twist.twist.linear.x = v_x;
+                    odom_msg.twist.twist.linear.y = v_y;
+                    odom_msg.twist.twist.linear.z = v_z;
+                    odom_msg.twist.twist.angular.x = w.x();
+                    odom_msg.twist.twist.angular.y = w.y();
+                    odom_msg.twist.twist.angular.z = w.z();
+
+                    odom_msg.twist.covariance = {
+                        0.01, 0.0, 0.0, 0.0, 0.0, 0.0, // v_x
+                        0.0, 0.01, 0.0, 0.0, 0.0, 0.0, // v_y
+                        0.0, 0.0, 0.2, 0.0, 0.0, 0.0,  // v_z
+                        0.0, 0.0, 0.0, 0.01, 0.0, 0.0, // w_x
+                        0.0, 0.0, 0.0, 0.0, 0.01, 0.0, // w_y
+                        0.0, 0.0, 0.0, 0.0, 0.0, 0.05  // w_z
+                    };
+
+                    odom_publisher_->publish(odom_msg);
 
                     // Update class members for next iteration
                     keypoints_L_prev_ = keypoints_L;
@@ -211,20 +288,43 @@ private:
                     points_3D_stereo_prev_ = points_3D_stereo;
                     keyframe_L_prev_ = left_img;
                     keyframe_R_prev_ = right_img;
-                    rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
-                    tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
+                    timestamp_prev_ = timestamp;
+                    odom_msg_prev_ = odom_msg;
+                    rvec_guess_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
+                    tvec_guess_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
+                    global_pose_prev_ = global_pose;
+
                 }
+                // Publish the previous odometry message again
+                odom_msg_prev_.header.stamp = this->get_clock()->now();
+                odom_publisher_->publish(odom_msg_prev_);
             }
             else
             {
-                RCLCPP_WARN(this->get_logger(), "Visual odometry chain is broken (failed to compute local pose). Resorting to estimating odometry with IMU sensor data.");
+                RCLCPP_ERROR(this->get_logger(), "Visual odometry chain is broken (failed to compute local pose).");
 
                 save_snapshots(keyframe_L_prev_, left_img, left_img_msg_ptr->header.stamp);
                 save_snapshots(keyframe_L_prev_, keyframe_R_prev_, left_img_msg_ptr->header.stamp, "stereo_prev_");
 
-                start_vo_ = false;
+                bootstrap_complete_ = false;
+            }
+        }
+        else
+        {
+            RCLCPP_INFO(this->get_logger(), "Starting visual odometry...");
+
+            if (latest_ekf_odom_ && !reset_odom_)
+            {
+                RCLCPP_INFO(this->get_logger(), "Using initial pose estimated by EKF.");
+                tf2::fromMsg(latest_ekf_odom_->pose.pose, global_pose_prev_);
+            }
+            else
+            {
+                RCLCPP_INFO(this->get_logger(), "No estimated initial pose found from EKF. Using identity transform.");
+                global_pose_prev_.setIdentity();
             }
 
+            // Publish initial odometry message
             std_msgs::msg::Header header;
             header.stamp = this->get_clock()->now();
             header.frame_id = "odom";
@@ -233,12 +333,12 @@ private:
             odom_msg.header = header;
             odom_msg.child_frame_id = "left_camera";
 
-            tf2::Vector3 t_global = global_pose_.getOrigin();
+            tf2::Vector3 t_global = global_pose_prev_.getOrigin();
             odom_msg.pose.pose.position.x = t_global.x();
             odom_msg.pose.pose.position.y = t_global.y();
             odom_msg.pose.pose.position.z = t_global.z();
 
-            tf2::Quaternion q_global = global_pose_.getRotation();
+            tf2::Quaternion q_global = global_pose_prev_.getRotation();
             odom_msg.pose.pose.orientation = tf2::toMsg(q_global);
 
             odom_msg.pose.covariance = {
@@ -251,22 +351,15 @@ private:
             };
 
             odom_msg.twist.covariance = {
-                0.3, 0.0, 0.0, 0.0, 0.0, 0.0, // Vx
-                0.0, 0.3, 0.0, 0.0, 0.0, 0.0, // Vy
-                0.0, 0.0, 0.4, 0.0, 0.0, 0.0, // Vz
-                0.0, 0.0, 0.0, 0.3, 0.0, 0.0, // Angular Vx
-                0.0, 0.0, 0.0, 0.0, 0.3, 0.0, // Angular Vy
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.3  // Angular Vz
+                0.01, 0.0, 0.0, 0.0, 0.0, 0.0, // v_x
+                0.0, 0.01, 0.0, 0.0, 0.0, 0.0, // v_y
+                0.0, 0.0, 0.2, 0.0, 0.0, 0.0,  // v_z
+                0.0, 0.0, 0.0, 0.01, 0.0, 0.0, // w_x
+                0.0, 0.0, 0.0, 0.0, 0.01, 0.0, // w_y
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.05  // w_z
             };
 
-            // Publish odometry msg
             odom_publisher_->publish(odom_msg);
-        }
-        else
-        {
-            RCLCPP_INFO(this->get_logger(), "Starting visual odometry...");
-
-            start_vo_ = true;
 
             // Update class members for next iteration
             keypoints_L_prev_ = keypoints_L;
@@ -276,13 +369,12 @@ private:
             keyframe_L_prev_ = left_img;
             keyframe_R_prev_ = right_img;
             timestamp_prev_ = timestamp;
-            rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
-            tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
+            odom_msg_prev_ = odom_msg;
+            rvec_guess_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
+            tvec_guess_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
 
-            if (latest_ekf_odom_)
-            {
-                tf2::fromMsg(latest_ekf_odom_->pose.pose, global_pose_);
-            }
+            bootstrap_complete_ = true;
+            reset_odom_ = false;
         }
 
         callback_count_++;
@@ -324,9 +416,9 @@ private:
     {
         tf2::Vector3 t_cam_cs = T_cam_cs.getOrigin();
 
-        double x = t_cam_cs.z() / 1000.0;  // Z coordinate (camera coordinate system), unit: [m]
-        double y = -t_cam_cs.x() / 1000.0; // X coordinate (camera coordinate system), unit: [m]
-        double z = -t_cam_cs.y() / 1000.0; // Y coordinate (camera coordinate system), unit: [m]
+        double x = t_cam_cs.z();  // Z coordinate (camera coordinate system), unit: [m]
+        double y = -t_cam_cs.x(); // X coordinate (camera coordinate system), unit: [m]
+        double z = -t_cam_cs.y(); // Y coordinate (camera coordinate system), unit: [m]
 
         tf2::Vector3 t_rh_cs(x, y, z);
 
@@ -346,6 +438,42 @@ private:
         return T_rh_cs;
     }
 
+    sensor_msgs::msg::PointCloud2 convert_3D_points_to_PointCloud2(const std::vector<cv::Point3d> &points, const std::string &frame_id)
+    {
+        sensor_msgs::msg::PointCloud2 cloud;
+        cloud.header.stamp = this->get_clock()->now();
+        cloud.header.frame_id = frame_id;
+        cloud.height = 1;
+        cloud.width = points.size();
+        cloud.is_dense = true;
+        cloud.is_bigendian = false;
+
+        sensor_msgs::PointCloud2Modifier modifier(cloud);
+        modifier.setPointCloud2FieldsByString(1, "xyz");
+        modifier.resize(points.size());
+
+        sensor_msgs::PointCloud2Iterator<float> iter_x(cloud, "x");
+        sensor_msgs::PointCloud2Iterator<float> iter_y(cloud, "y");
+        sensor_msgs::PointCloud2Iterator<float> iter_z(cloud, "z");
+
+        for (const auto &pt : points)
+        {
+            tf2::Transform pt_tf;
+            pt_tf.setOrigin(tf2::Vector3(pt.x / 1000.0, pt.y / 1000.0, pt.z / 1000.0)); // unit: [m]
+            pt_tf.setRotation(tf2::Quaternion::getIdentity()); // No rotation
+            pt_tf = convert_cam_to_rh_coordinate_sys(pt_tf);
+
+            *iter_x = static_cast<float>(pt_tf.getOrigin().x());
+            *iter_y = static_cast<float>(pt_tf.getOrigin().y());
+            *iter_z = static_cast<float>(pt_tf.getOrigin().z());
+            ++iter_x;
+            ++iter_y;
+            ++iter_z;
+        }
+
+        return cloud;
+    }
+
     // Odometry publisher
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_publisher_;
 
@@ -353,9 +481,15 @@ private:
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr ekf_odom_subscription_;
     nav_msgs::msg::Odometry::ConstSharedPtr latest_ekf_odom_;
 
+    // Subscriber for reset_odom messages that reset visual odometry
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr reset_odom_subscription_;
+
     // Subscribers for left and right stereo images
     image_transport::SubscriberFilter left_subscriber_;
     image_transport::SubscriberFilter right_subscriber_;
+
+    // Pointcloud publisher
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_publisher_;
 
     // Pointer for the Synchronizer
     std::shared_ptr<approximate_time_synchronizer> time_sync_;
@@ -393,16 +527,22 @@ private:
     cv::Mat keyframe_L_prev_, keyframe_R_prev_;
 
     // Global camera pose relative to camera's odometry frame
-    tf2::Transform global_pose_;
+    tf2::Transform global_pose_prev_;
+
+    // Previous odometry meesage
+    nav_msgs::msg::Odometry odom_msg_prev_;
 
     // Initial guess for rotation (rvec) and translation (tvec)
-    cv::Mat rvec_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
-    cv::Mat tvec_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
+    cv::Mat rvec_guess_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
+    cv::Mat tvec_guess_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
 
     // Keyframe timestamp
     std::chrono::time_point<std::chrono::steady_clock> timestamp_prev_;
 
-    bool start_vo_ = false;
+    bool bootstrap_complete_ = false;
+    bool reset_odom_ = false;
+
+    double v_max_ = 1.0; // unit: [m/s]
 };
 
 int main(int argc, char **argv)

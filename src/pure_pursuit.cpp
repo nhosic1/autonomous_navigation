@@ -3,6 +3,7 @@
 #include "autonomous_navigation/vehicle_constants.hpp"
 #include "autonomous_navigation/pure_pursuit.hpp"
 #include <iostream>
+#include <algorithm>
 
 bool Point::operator==(const Point &point) const
 {
@@ -31,36 +32,55 @@ std::pair<double, double> PurePursuitController::get_motion_controls(Pose curren
 
     Point target_point_local = transform_to_local_frame(target_point, current_pose);
 
+    std::cout << "Current position (odom): (" << current_pose.position.x << ", " << current_pose.position.y << ")" << std::endl;
+    std::cout << "Target point (odom): (" << target_point.x << ", " << target_point.y << ")" << std::endl;
+    std::cout << "Target point (local): (" << target_point_local.x << ", " << target_point_local.y << ")" << std::endl;
+
     if (target_point_local.x < 0)
         throw std::runtime_error("Cannot compute steering angle. Target point is behind the vehicle.");
 
     double target_point_angle = atan2(target_point_local.y, target_point_local.x);
+    double target_point_distance = sqrt(pow(target_point_local.x, 2) + pow(target_point_local.y, 2));
     double steering_angle;
+
+    std::cout << "Target point angle: " << target_point_angle << std::endl;
+    std::cout << "Target point distance: " << target_point_distance << std::endl;
 
     if (fabs(target_point_angle) < 1e-6)
         steering_angle = 0.0;
     else
     {
-        double target_point_distance = sqrt(pow(target_point_local.x, 2) + pow(target_point_local.y, 2));
         double steering_radius = fabs(target_point_distance / (2 * sin(target_point_angle)));
+        std::cout << "Steering radius: " << steering_radius << std::endl;
         steering_angle = atan2(WHEEL_BASE, steering_radius);
 
-        if (target_point_angle < 0)
+        if (target_point_local.y < 0)
             steering_angle *= -1;
 
-        if (fabs(steering_angle) > STEERING_LIMIT)
-            throw std::runtime_error("Computed steering angle (" + std::to_string(steering_angle) +
-                                        ") exceeds the steering limit (" + std::to_string(STEERING_LIMIT) +
-                                        ") of the vehicle.");
+        // Define steering limit of bicycle model
+        double steering_limit = atan(WHEEL_BASE / (MINIMUM_TURNING_RADIUS + WHEEL_SEPARATION / 2));
+
+        if (fabs(steering_angle) > steering_limit)
+        {
+            std::cerr << "[WARN] Computed steering angle (" << steering_angle <<  ") exceeds vehicle limits. Limiting to range [" << -steering_limit << ", " << steering_limit << "]" << std::endl;
+            steering_angle = std::clamp(steering_angle, -steering_limit, steering_limit);
+        }
+            
     }
 
     double w;
     double v_turn = v_max_ * exp(-K_v_turn_ * fabs(steering_angle));
 
     if (target_point == path_.back())
-        w = std::min(v_turn, v_stop_controller_.get_control(v_cur)) / WHEEL_RADIUS;
+    {
+        w = std::min(v_turn, v_stop_controller_.get_control(target_point_distance)) / WHEEL_RADIUS;
+        std::cout << "Goal is within lookahead distance." << std::endl;
+        std::cout << "v stop controller output: " << v_stop_controller_.get_control(target_point_distance) << std::endl;
+    }
     else
+    {
         w = v_turn / WHEEL_RADIUS;
+    }
 
     return {steering_angle, w};
 }
@@ -68,6 +88,7 @@ std::pair<double, double> PurePursuitController::get_motion_controls(Pose curren
 void PurePursuitController::set_path(const std::vector<Point> &path)
 {
     path_ = path;
+    last_closest_path_point_index_ = 0;
 }
 
 Point PurePursuitController::find_target_point(Point current_position, double lookahead_distance)

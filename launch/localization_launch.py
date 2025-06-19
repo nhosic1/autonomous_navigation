@@ -7,7 +7,8 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
-    package_share_dir = get_package_share_directory("autonomous_navigation")
+    package_name = "autonomous_navigation"
+    package_share_dir = get_package_share_directory(package_name)
     model_path = os.path.join(
         package_share_dir, "models", "autonomous_vehicle", "model.urdf"
     )
@@ -17,7 +18,7 @@ def generate_launch_description():
     sim_arg = DeclareLaunchArgument(
         "sim",
         default_value="false",
-        description="Enable simulation-specific stereo camera configuration.",
+        description="Enable simulation-specific configurations.",
     )
 
     data_folder = LaunchConfiguration("data_folder")
@@ -33,7 +34,7 @@ def generate_launch_description():
     robot_state_publisher = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
-        parameters=[{"robot_description": robot_description}],
+        parameters=[{"robot_description": robot_description, "use_sim_time": sim}],
         output="screen",
     )
 
@@ -41,42 +42,27 @@ def generate_launch_description():
         package="joint_state_publisher",
         executable="joint_state_publisher",
         arguments=[model_path],
+        parameters=[{"use_sim_time": sim}],
     )
 
-    static_transform_publisher = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=[
-            "--x",
-            "0.35",
-            "--y",
-            "0.09",
-            "--z",
-            "0.35",
-            "--yaw",
-            "0",
-            "--pitch",
-            "0",
-            "--roll",
-            "0",
-            "--frame-id",
-            "odom",
-            "--child-frame-id",
-            "odom_visual",
-        ],
+    wheel_odom_estimator = Node(
+        package=package_name,
+        executable="wheel_odom_estimator",
+        parameters=[{"use_sim_time": sim}],
     )
 
-    vo_estimator = Node(
-        package="autonomous_navigation",
-        executable="vo_estimator",
-        parameters=[{"sim": sim, "data_folder": data_folder}],
+    visual_odom_estimator = Node(
+        package=package_name,
+        executable="visual_odom_estimator",
+        parameters=[{"sim": sim, "data_folder": data_folder, "use_sim_time": sim}],
     )
 
     imu_covariance_fixer = Node(
-            package="autonomous_navigation",
+            package=package_name,
             executable="imu_covariance_fixer.py",
             name="imu_covariance_fixer",
-            output="screen"
+            output="screen",
+            parameters=[{"use_sim_time": sim}],
         )
 
     ekf_node = Node(
@@ -84,7 +70,14 @@ def generate_launch_description():
         executable="ekf_node",
         name="ekf_filter_node",
         output="screen",
-        parameters=[ekf_config_path],
+        parameters=[ekf_config_path, {"use_sim_time": sim}],
+    )
+
+    localization_initializer = Node(
+        package=package_name,
+        executable="localization_initializer",
+        output="screen",
+        parameters=[{"use_sim_time": sim}],
     )
 
     return LaunchDescription(
@@ -92,13 +85,15 @@ def generate_launch_description():
             sim_arg,
             data_folder_arg,
             robot_state_publisher,
-            joint_state_publisher,
+            # joint_state_publisher,
             imu_covariance_fixer,
             TimerAction(
                 period=0.2,
                 actions=[
-                    vo_estimator,
+                    wheel_odom_estimator,
+                    visual_odom_estimator,
                     ekf_node,
+                    localization_initializer,
                 ],
             ),
         ]

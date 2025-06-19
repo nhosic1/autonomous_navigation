@@ -22,6 +22,11 @@ find_package(image_transport REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(PkgConfig REQUIRED)
+find_package(nav2_common REQUIRED)
+find_package(nav2_core REQUIRED)
+find_package(nav2_costmap_2d REQUIRED)
+find_package(nav2_util REQUIRED)
+find_package(pluginlib REQUIRED)
 
 if(BUILD_RPI)
   pkg_check_modules(libcamera REQUIRED libcamera)
@@ -29,6 +34,19 @@ endif()
 
 include_directories(
   include
+)
+
+add_library(nav2_pure_pursuit_controller SHARED src/nav2_pure_pursuit_controller.cpp)
+target_link_libraries(nav2_pure_pursuit_controller pure_pursuit pid_controller)
+ament_target_dependencies(nav2_pure_pursuit_controller
+  rclcpp
+  geometry_msgs
+  nav2_costmap_2d
+  pluginlib
+  nav_msgs
+  nav2_util
+  nav2_core
+  tf2
 )
 
 add_library(stereo_processing SHARED src/stereo_processing.cpp)
@@ -42,13 +60,13 @@ if(NOT BUILD_RPI)
   add_library(pid_controller SHARED src/pid_controller.cpp)
 endif()
 
-add_executable(vo_estimator src/vo_estimator.cpp)
-target_link_libraries(vo_estimator stereo_processing localization)
-target_include_directories(vo_estimator PUBLIC
+add_executable(visual_odom_estimator src/visual_odom_estimator.cpp)
+target_link_libraries(visual_odom_estimator stereo_processing localization)
+target_include_directories(visual_odom_estimator PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-target_compile_features(vo_estimator PUBLIC c_std_99 cxx_std_17)
-ament_target_dependencies(vo_estimator rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV ament_index_cpp image_transport tf2 tf2_geometry_msgs)
+target_compile_features(visual_odom_estimator PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(visual_odom_estimator rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV ament_index_cpp image_transport tf2 tf2_geometry_msgs)
 
 if(BUILD_RPI)
   add_executable(frame_publisher src/frame_publisher.cpp)
@@ -88,10 +106,33 @@ if (NOT BUILD_RPI)
   ament_target_dependencies(path_follower rclcpp std_msgs sensor_msgs nav_msgs message_filters OpenCV tf2 tf2_geometry_msgs)
 endif()
 
+add_executable(localization_initializer src/localization_initializer.cpp)
+target_include_directories(visual_odom_estimator PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(localization_initializer PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(localization_initializer rclcpp std_msgs sensor_msgs tf2 tf2_geometry_msgs)
+
+add_executable(wheel_odom_estimator src/wheel_odom_estimator.cpp)
+target_include_directories(wheel_odom_estimator PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(wheel_odom_estimator PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(wheel_odom_estimator rclcpp std_msgs sensor_msgs nav_msgs tf2 tf2_geometry_msgs)
+
+add_executable(joint_controller src/joint_controller.cpp)
+target_include_directories(joint_controller PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(joint_controller PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(joint_controller rclcpp std_msgs sensor_msgs nav_msgs)
+
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY worlds DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY models DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY maps DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY behavior_trees DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY include DESTINATION include)
 install(TARGETS stereo_processing
   ARCHIVE DESTINATION lib
@@ -103,11 +144,19 @@ install(TARGETS localization
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
+install(TARGETS nav2_pure_pursuit_controller
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
 
-install(TARGETS vo_estimator DESTINATION lib/${PROJECT_NAME})
+install(TARGETS visual_odom_estimator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_camera_calibrator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_viewer DESTINATION lib/${PROJECT_NAME})
 install(TARGETS state_monitor DESTINATION lib/${PROJECT_NAME})
+install(TARGETS localization_initializer DESTINATION lib/${PROJECT_NAME})
+install(TARGETS wheel_odom_estimator DESTINATION lib/${PROJECT_NAME})
+install(TARGETS joint_controller DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_RPI)
   install(TARGETS frame_publisher DESTINATION lib/${PROJECT_NAME})
@@ -142,5 +191,7 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
+
+pluginlib_export_plugin_description_file(nav2_core plugins/nav2_pure_pursuit_controller_plugin.xml)
 
 ament_package()

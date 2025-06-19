@@ -1,0 +1,16 @@
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <PipelineSequence name="NavigateWithReplanning">
+      <Fallback name="FallbackComputePathToPose">
+        <ReactiveSequence name="CheckIfNewPathNeeded">
+          <Inverter>
+            <GlobalUpdatedGoal/>
+          </Inverter>
+          <IsPathValid path="{path}"/>
+        </ReactiveSequence>
+        <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+      </Fallback> 
+      <FollowPath path="{path}" controller_id="FollowPath"/>
+    </PipelineSequence>
+  </BehaviorTree>
+</root>

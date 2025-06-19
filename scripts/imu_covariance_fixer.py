@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import math
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
@@ -31,7 +32,7 @@ class IMUCovarianceFixer(Node):
             msg.linear_acceleration_covariance = [0.1, 0.0, 0.0,
                                                   0.0, 0.1, 0.0,
                                                   0.0, 0.0, 0.1]
-
+            
         self.publisher.publish(msg)
 
 def main(args=None):

@@ -21,13 +21,13 @@
   <link name="chassis">
     <visual>
       <geometry>
-        <box size="0.7 0.32 0.12"/>
+        <box size="0.7 0.25 0.12"/>
       </geometry>
       <material name="offwhite"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.7 0.35 0.12"/>
+        <box size="0.7 0.25 0.12"/>
       </geometry>
     </collision>
     <inertial>
@@ -54,8 +54,8 @@
     </inertial>
   </link>
   <gazebo reference="front_left_wheel">
-    <mu1>0.4</mu1>
-    <mu2>0.9</mu2>
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
     <fdir1>0 0 1</fdir1>
   </gazebo>
 
@@ -77,8 +77,8 @@
     </inertial>
   </link>
   <gazebo reference="front_right_wheel">
-    <mu1>0.4</mu1>
-    <mu2>0.9</mu2>
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
     <fdir1>0 0 1</fdir1>
   </gazebo>
 
@@ -100,8 +100,8 @@
     </inertial>
   </link>
   <gazebo reference="rear_left_wheel">
-    <mu1>0.4</mu1>
-    <mu2>0.9</mu2>
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
     <fdir1>0 0 1</fdir1>
   </gazebo>
 
@@ -123,8 +123,8 @@
     </inertial>
   </link>
   <gazebo reference="rear_right_wheel">
-    <mu1>0.4</mu1>
-    <mu2>0.9</mu2>
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
     <fdir1>0 0 1</fdir1>
   </gazebo>
 
@@ -295,6 +295,7 @@
   </joint>
 
   <joint name="front_left_wheel_steering_joint" type="revolute">
+    <!-- <origin xyz="0 0.26 0" rpy="0 0 0"/> -->
     <origin xyz="0 0.22 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit effort="25" lower="-0.6" upper="0.6" velocity="1.0"/>
@@ -303,6 +304,7 @@
   </joint>
 
   <joint name="front_right_wheel_steering_joint" type="revolute">
+    <!-- <origin xyz="0 -0.26 0" rpy="0 0 0"/> -->
     <origin xyz="0 -0.22 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit effort="25" lower="-0.6" upper="0.6" velocity="1.0"/>
@@ -311,6 +313,7 @@
   </joint>
 
   <joint name="front_left_wheel_joint" type="continuous">
+    <!-- <origin xyz="0 0 0" rpy="-1.5707 0 0"/> -->
     <origin xyz="0 0.04 0" rpy="-1.5707 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="front_left_wheel_steering_link"/>
@@ -318,16 +321,16 @@
   </joint>
 
   <joint name="front_right_wheel_joint" type="continuous">
+    <!-- <origin xyz="0 0 0" rpy="-1.5707 0 0"/> -->
     <origin xyz="0 -0.04 0" rpy="-1.5707 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="front_right_wheel_steering_link"/>
     <child link="front_right_wheel"/>
   </joint>
 
-  <joint name="rear_left_wheel_joint" type="revolute">
+  <joint name="rear_left_wheel_joint" type="continuous">
     <origin xyz="0 -0.26 0" rpy="-1.5707 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit effort="25" lower="-3.1416" upper="3.1416" velocity="10.0"/>
     <parent link="rear_axle"/>
     <child link="rear_left_wheel"/>
   </joint>
@@ -376,32 +379,28 @@
   </joint>
 
   <!-- plugins section -->
-  <!-- <gazebo>
+
+  <gazebo>
     <plugin
-      filename="libignition-gazebo-odometry-publisher-system.so"
-      name="ignition::gazebo::systems::OdometryPublisher">
-      <xyz_offset>-0.957138 0 -0.025 0 0 0</xyz_offset>
-      <odom_publish_frequency>15</odom_publish_frequency>
+      filename="libignition-gazebo-joint-state-publisher-system.so"
+      name="ignition::gazebo::systems::JointStatePublisher">
+      <joint_name>front_left_wheel_steering_joint</joint_name>
+      <joint_name>front_right_wheel_steering_joint</joint_name>
+      <joint_name>front_left_wheel_joint</joint_name>
+      <joint_name>front_right_wheel_joint</joint_name>
+      <joint_name>rear_left_wheel_joint</joint_name>
+      <joint_name>rear_right_wheel_joint</joint_name>
     </plugin>
-  </gazebo> -->
+  </gazebo>
 
-  <!-- <plugin
-    filename="libignition-gazebo-joint-state-publisher-system.so"
-    name="ignition::gazebo::systems::JointStatePublisher">
-    <joint_name>front_left_wheel_steering_joint</joint_name>
-    <joint_name>front_right_wheel_steering_joint</joint_name>
-    <joint_name>rear_left_wheel_joint</joint_name>
-    <joint_name>rear_right_wheel_joint</joint_name>
-  </plugin> -->
-
-  <!-- <gazebo>
+  <gazebo>
     <plugin
       filename="libignition-gazebo-joint-position-controller-system.so"
       name="ignition::gazebo::systems::JointPositionController">
       <joint_name>front_left_wheel_steering_joint</joint_name>
-      <p_gain>1</p_gain>
+      <p_gain>3</p_gain>
       <i_gain>0.1</i_gain>
-      <d_gain>2.5</d_gain>
+      <d_gain>0.5</d_gain>
     </plugin>
   </gazebo>
 
@@ -410,9 +409,9 @@
       filename="libignition-gazebo-joint-position-controller-system.so"
       name="ignition::gazebo::systems::JointPositionController">
       <joint_name>front_right_wheel_steering_joint</joint_name>
-      <p_gain>1</p_gain>
+      <p_gain>3</p_gain>
       <i_gain>0.1</i_gain>
-      <d_gain>2.5</d_gain>
+      <d_gain>0.5</d_gain>
     </plugin>
   </gazebo>
 
@@ -421,7 +420,6 @@
       filename="libignition-gazebo-joint-controller-system.so"
       name="ignition::gazebo::systems::JointController">
       <joint_name>rear_left_wheel_joint</joint_name>
-      <initial_velocity>0.5</initial_velocity>
     </plugin>
   </gazebo>
 
@@ -430,20 +428,33 @@
       filename="libignition-gazebo-joint-controller-system.so"
       name="ignition::gazebo::systems::JointController">
       <joint_name>rear_right_wheel_joint</joint_name>
-      <initial_velocity>0.5</initial_velocity>
     </plugin>
-  </gazebo> -->
+  </gazebo>
 
   <gazebo>
     <plugin
+      filename="libignition-gazebo-odometry-publisher-system.so"
+      name="ignition::gazebo::systems::OdometryPublisher">
+      <xyz_offset>-0.3 0 0 0 0 0</xyz_offset>
+      <odom_publish_frequency>15</odom_publish_frequency>
+      <robot_base_frame>rear_axle</robot_base_frame>
+      <odom_frame>odom</odom_frame>
+      <dimensions>2</dimensions>
+    </plugin>
+  </gazebo>
+
+  <!-- <gazebo>
+    <plugin
       filename="ignition-gazebo-ackermann-steering-system"
       name="gz::sim::systems::AckermannSteering">
+      <left_joint>front_left_wheel_joint</left_joint>
       <left_joint>rear_left_wheel_joint</left_joint>
+      <right_joint>front_right_wheel_joint</right_joint>
       <right_joint>rear_right_wheel_joint</right_joint>
       <left_steering_joint>front_left_wheel_steering_joint</left_steering_joint>
       <right_steering_joint>front_right_wheel_steering_joint</right_steering_joint>
-      <kingpin_width>0.44</kingpin_width>
-      <steering_limit>0.4</steering_limit>
+      <kingpin_width>0.52</kingpin_width>
+      <steering_limit>0.5</steering_limit>
       <wheel_base>0.6</wheel_base>
       <wheel_separation>0.52</wheel_separation>
       <wheel_radius>0.1</wheel_radius>
@@ -451,6 +462,8 @@
       <max_velocity>1</max_velocity>
       <min_acceleration>-3</min_acceleration>
       <max_acceleration>3</max_acceleration>
+      <odom_topic>/model/autonomous_vehicle/odometry/ackermann</odom_topic>
+      <frame_id>odom</frame_id>
     </plugin>
-  </gazebo>
+  </gazebo> -->
 </robot>

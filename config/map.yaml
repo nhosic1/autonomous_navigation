@@ -1,6 +1,6 @@
 image: ../maps/apartment_plan_scaled.png
 resolution: 0.0666667
-origin: [6.625, -8.85, 1.5707]
+origin: [-6.625, -8.85, 0.0]
 negate: 0
 occupied_thresh: 0.65
 free_thresh: 0.2
