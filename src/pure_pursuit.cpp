@@ -114,8 +114,9 @@ Point PurePursuitController::find_target_point(Point current_position, double lo
     // No outside point found, last path point is within the lookahead distance
     if (outside_path_point_index == path_.size())
         return path_.back();
+        
     // Closest path point is outside of the lookahead radius
-    else if (outside_path_point_index == closest_path_point_index)
+    if (outside_path_point_index == closest_path_point_index)
     {
         if (outside_path_point_index + 1 < path_.size())
         {
@@ -166,13 +167,19 @@ Point PurePursuitController::find_target_point(Point current_position, double lo
         }
         return closest_path_point;
     }
-    else
+
+    // Closest path point is inside the lookahead radius
+    // Look for the target point between two path points closest to the lookahead radius
+    std::optional<std::vector<Point>> intersections = find_line_segment_circle_intersections(path_[outside_path_point_index - 1], path_[outside_path_point_index], current_position, lookahead_distance);
+    if (intersections.has_value())
     {
-        // Closest path point is inside the lookahead radius
-        // Look for the target point between two path points closest to the lookahead radius
-        std::optional<std::vector<Point>> intersections = find_line_segment_circle_intersections(path_[outside_path_point_index - 1], path_[outside_path_point_index], current_position, lookahead_distance);
-        return intersections.value().back();
+        if (intersections.value().size() == 1)
+            return intersections.value().back();
+        
+        throw std::runtime_error("Found two target point candidates, but only one is expected.");    
     }
+
+    throw std::runtime_error("No target point found within the lookahead distance");
 }
 
 int PurePursuitController::find_closest_path_point_index(Point current_position, size_t start_index)

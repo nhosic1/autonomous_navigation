@@ -19,6 +19,9 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <pcl/point_types.h>
+#include <pcl/filters/radius_outlier_removal.h>
+#include <pcl_conversions/pcl_conversions.h>
 #include "autonomous_navigation/stereo_processing.hpp"
 #include "autonomous_navigation/localization.hpp"
 
@@ -130,8 +133,8 @@ private:
         orb_->detectAndCompute(right_img, cv::Mat(), keypoints_R, descriptors_R);
 
         // Compute 3D points
-        std::vector<cv::Point3d> points_3D_stereo;
-        std::vector<cv::Point2d> points_2D_stereo;
+        std::vector<cv::Point3d> points_3D_stereo, points_3D_stereo_filtered;
+        std::vector<cv::Point2d> points_2D_stereo, points_2D_stereo_filtered;
         double average_depth;
 
         if (descriptors_L.empty() || descriptors_R.empty())
@@ -149,9 +152,44 @@ private:
 
             if (success)
             {
+                pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
+                pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZ>);
 
-                sensor_msgs::msg::PointCloud2 point_cloud = convert_3D_points_to_PointCloud2(points_3D_stereo, "left_camera");
-                point_cloud_publisher_->publish(point_cloud);
+                cloud->reserve(points_3D_stereo.size());
+                for (const auto &point : points_3D_stereo)
+                {
+                    cloud->emplace_back(static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z));
+                }
+                cloud->width = cloud->size();
+                cloud->height = 1;
+                cloud->is_dense = true;
+
+                pcl::RadiusOutlierRemoval<pcl::PointXYZ> outrem;
+                outrem.setInputCloud(cloud);
+                outrem.setRadiusSearch(0.2);
+                outrem.setMinNeighborsInRadius(3);
+                outrem.filter(*cloud_filtered);
+
+                pcl::IndicesConstPtr removed_indices = outrem.getRemovedIndices();
+
+                std::vector<bool> outlier_mask(cloud->size(), false);
+                for (size_t i : *removed_indices)
+                {
+                    if (i < outlier_mask.size())
+                        outlier_mask[i] = true;
+                }
+
+                for (size_t i = 0; i < points_2D_stereo.size(); ++i)
+                {
+                    if (!outlier_mask[i]) 
+                    {
+                        points_2D_stereo_filtered.push_back(points_2D_stereo[i]);
+                        points_3D_stereo_filtered.push_back(points_3D_stereo[i]);
+                    }
+                }
+
+                sensor_msgs::msg::PointCloud2 point_cloud_msg = convert_to_PointCloud2_msg(cloud_filtered, "left_camera");
+                point_cloud_publisher_->publish(point_cloud_msg);
             }
             else
             {
@@ -169,17 +207,20 @@ private:
             bool success = false;
             cv::Mat rvec = rvec_guess_.clone();
             cv::Mat tvec = tvec_guess_.clone();
-            success = loc::compute_local_pose(camera_matrix_L_rect_, cv::Mat(), matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, rvec, tvec);
+            std::vector<cv::Point2d> points_2D_stereo_prev_filtered;
+            std::vector<cv::Point3d> points_3D_stereo_prev_filtered;
+
+            success = loc::compute_local_pose(camera_matrix_L_rect_, cv::Mat(), matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, points_2D_stereo_prev_filtered, points_3D_stereo_prev_filtered, rvec, tvec);
 
             if (success)
             {
                 auto duration = std::chrono::duration_cast<std::chrono::duration<double>>(timestamp - timestamp_prev_);
                 double dt = duration.count(); // unit: [s]
 
-                double keyframe_distance = cv::norm(tvec); // unit: [mm]
+                double keyframe_distance = cv::norm(tvec); // unit: [m]
                 double total_rotation = cv::norm(rvec);    // unit: [rad]
 
-                double v = (keyframe_distance / 1000.0) / dt; // unit: [m/s]
+                double v = (keyframe_distance) / dt; // unit: [m/s]
 
                 if (std::abs(v) > v_max_)
                 {
@@ -197,7 +238,7 @@ private:
                 }
 
                 // Keyframe slection
-                if ((((keyframe_distance / average_depth) > 0.07 || total_rotation > 5 * CV_PI / 180)) && keyframe_distance > 50)
+                if ((((keyframe_distance / average_depth) > 0.07 || total_rotation > 5 * CV_PI / 180)) && keyframe_distance > 0.05)
                 {
                     // Convert rvec to a rotation matrix
                     cv::Mat R_cv;
@@ -216,8 +257,7 @@ private:
                     local_pose_cam_cs.setRotation(q_cam_cs);
 
                     // Invert rotation and translation to represent camera's motion in odometry frame (3D points are static)
-                    local_pose_cam_cs = local_pose_cam_cs.inverse(); // unit: [mm]
-                    local_pose_cam_cs.setOrigin(local_pose_cam_cs.getOrigin() * 0.001); // convert to meters
+                    local_pose_cam_cs = local_pose_cam_cs.inverse(); // unit: [m]
 
                     // Update the global pose
                     tf2::Transform local_pose = convert_cam_to_rh_coordinate_sys(local_pose_cam_cs); // unit: [m]
@@ -245,9 +285,9 @@ private:
                         0.01, 0.0, 0.0, 0.0, 0.0, 0.0, // X
                         0.0, 0.01, 0.0, 0.0, 0.0, 0.0, // Y
                         0.0, 0.0, 0.2, 0.0, 0.0, 0.0,  // Z
-                        0.0, 0.0, 0.0, 0.1, 0.0, 0.0, // Roll
-                        0.0, 0.0, 0.0, 0.0, 0.1, 0.0, // Pitch
-                        0.0, 0.0, 0.0, 0.0, 0.0, 0.1  // Yaw
+                        0.0, 0.0, 0.0, 0.1, 0.0, 0.0,  // Roll
+                        0.0, 0.0, 0.0, 0.0, 0.1, 0.0,  // Pitch
+                        0.0, 0.0, 0.0, 0.0, 0.0, 0.1   // Yaw
                     };
 
                     tf2::Vector3 t_local = local_pose.getOrigin();
@@ -284,8 +324,8 @@ private:
                     // Update class members for next iteration
                     keypoints_L_prev_ = keypoints_L;
                     descriptors_L_prev_ = descriptors_L;
-                    points_2D_stereo_prev_ = points_2D_stereo;
-                    points_3D_stereo_prev_ = points_3D_stereo;
+                    points_2D_stereo_prev_ = points_2D_stereo_filtered;
+                    points_3D_stereo_prev_ = points_3D_stereo_filtered;
                     keyframe_L_prev_ = left_img;
                     keyframe_R_prev_ = right_img;
                     timestamp_prev_ = timestamp;
@@ -293,7 +333,6 @@ private:
                     rvec_guess_ = cv::Mat::zeros(3, 1, CV_64F); // No rotation
                     tvec_guess_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
                     global_pose_prev_ = global_pose;
-
                 }
                 // Publish the previous odometry message again
                 odom_msg_prev_.header.stamp = this->get_clock()->now();
@@ -364,8 +403,8 @@ private:
             // Update class members for next iteration
             keypoints_L_prev_ = keypoints_L;
             descriptors_L_prev_ = descriptors_L;
-            points_2D_stereo_prev_ = points_2D_stereo;
-            points_3D_stereo_prev_ = points_3D_stereo;
+            points_2D_stereo_prev_ = points_2D_stereo_filtered;
+            points_3D_stereo_prev_ = points_3D_stereo_filtered;
             keyframe_L_prev_ = left_img;
             keyframe_R_prev_ = right_img;
             timestamp_prev_ = timestamp;
@@ -382,7 +421,7 @@ private:
         bool snapshot = this->get_parameter("snapshot").as_bool();
         if (snapshot == true)
         {
-            save_snapshots(left_img, right_img, left_img_msg_ptr->header.stamp, "stereo");
+            save_snapshots(left_img, right_img, left_img_msg_ptr->header.stamp, "stereo_");
         }
     }
 
@@ -438,7 +477,37 @@ private:
         return T_rh_cs;
     }
 
-    sensor_msgs::msg::PointCloud2 convert_3D_points_to_PointCloud2(const std::vector<cv::Point3d> &points, const std::string &frame_id)
+    sensor_msgs::msg::PointCloud2 convert_to_PointCloud2_msg(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const std::string &frame_id)
+    {
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_transformed(new pcl::PointCloud<pcl::PointXYZ>);
+
+        cloud_transformed->reserve(cloud->size());
+        cloud_transformed->height = 1;
+        cloud_transformed->width = cloud->size();
+        cloud_transformed->is_dense = true;
+
+        for (auto &point : cloud->points)
+        {
+            tf2::Transform pt_tf;
+            pt_tf.setOrigin(tf2::Vector3(point.x, point.y, point.z)); // unit: [m]
+            pt_tf.setRotation(tf2::Quaternion::getIdentity());        // No rotation
+            pt_tf = convert_cam_to_rh_coordinate_sys(pt_tf);
+
+            cloud_transformed->emplace_back(
+                static_cast<float>(pt_tf.getOrigin().x()),
+                static_cast<float>(pt_tf.getOrigin().y()),
+                static_cast<float>(pt_tf.getOrigin().z()));
+        }
+
+        sensor_msgs::msg::PointCloud2 point_cloud_msg;
+        pcl::toROSMsg(*cloud_transformed, point_cloud_msg);
+        point_cloud_msg.header.stamp = this->get_clock()->now();
+        point_cloud_msg.header.frame_id = frame_id;
+
+        return point_cloud_msg;
+    }
+
+    sensor_msgs::msg::PointCloud2 convert_to_PointCloud2_msg(const std::vector<cv::Point3d> &points, const std::string &frame_id)
     {
         sensor_msgs::msg::PointCloud2 cloud;
         cloud.header.stamp = this->get_clock()->now();
@@ -459,7 +528,7 @@ private:
         for (const auto &pt : points)
         {
             tf2::Transform pt_tf;
-            pt_tf.setOrigin(tf2::Vector3(pt.x / 1000.0, pt.y / 1000.0, pt.z / 1000.0)); // unit: [m]
+            pt_tf.setOrigin(tf2::Vector3(pt.x, pt.y, pt.z));   // unit: [m]
             pt_tf.setRotation(tf2::Quaternion::getIdentity()); // No rotation
             pt_tf = convert_cam_to_rh_coordinate_sys(pt_tf);
 

@@ -65,11 +65,11 @@ int main(int argc, char **argv)
 
     // 3D coordinates of chessboard corners (single image)
     std::vector<cv::Point3f> corners_3D;
-    float d = 21; // distance between corners in [mm]
+    float d = 0.021; // distance between corners in [m]
     for (int i = 0; i < inner_corners_h; i++)
     {
         for (int j = 0; j < inner_corners_v; j++)
-            corners_3D.push_back(cv::Point3f(j * d, i * d, 0));
+            corners_3D.push_back(cv::Point3f(j * d, i * d, 0.0));
     }
 
     std::vector<cv::String> image_paths_L, image_paths_R;

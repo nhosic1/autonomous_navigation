@@ -27,6 +27,8 @@ find_package(nav2_core REQUIRED)
 find_package(nav2_costmap_2d REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(pluginlib REQUIRED)
+find_package(PCL REQUIRED)
+find_package(pcl_conversions REQUIRED)
 
 if(BUILD_RPI)
   pkg_check_modules(libcamera REQUIRED libcamera)
@@ -60,13 +62,21 @@ if(NOT BUILD_RPI)
   add_library(pid_controller SHARED src/pid_controller.cpp)
 endif()
 
+add_executable(obstacle_detector src/obstacle_detector.cpp)
+target_link_libraries(obstacle_detector stereo_processing ${PCL_LIBRARIES})
+target_include_directories(obstacle_detector PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(obstacle_detector PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(obstacle_detector rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV image_transport tf2 tf2_geometry_msgs pcl_conversions)
+
 add_executable(visual_odom_estimator src/visual_odom_estimator.cpp)
-target_link_libraries(visual_odom_estimator stereo_processing localization)
+target_link_libraries(visual_odom_estimator stereo_processing localization ${PCL_LIBRARIES})
 target_include_directories(visual_odom_estimator PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(visual_odom_estimator PUBLIC c_std_99 cxx_std_17)
-ament_target_dependencies(visual_odom_estimator rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV ament_index_cpp image_transport tf2 tf2_geometry_msgs)
+ament_target_dependencies(visual_odom_estimator rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV ament_index_cpp image_transport tf2 tf2_geometry_msgs pcl_conversions)
 
 if(BUILD_RPI)
   add_executable(frame_publisher src/frame_publisher.cpp)
@@ -150,6 +160,7 @@ install(TARGETS nav2_pure_pursuit_controller
   RUNTIME DESTINATION bin
 )
 
+install(TARGETS obstacle_detector DESTINATION lib/${PROJECT_NAME})
 install(TARGETS visual_odom_estimator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_camera_calibrator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_viewer DESTINATION lib/${PROJECT_NAME})

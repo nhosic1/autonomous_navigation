@@ -12,7 +12,7 @@ def generate_launch_description():
     model_path = os.path.join(package_share_dir, "models", "autonomous_vehicle", "model.urdf")
     # model_path = os.path.join(package_share_dir, "models", "ackermann")
     world_path = os.path.join(
-        package_share_dir, "worlds", "autonomous_navigation_world.sdf"
+        package_share_dir, "worlds", "warehouse_world.sdf"
     )
 
     world = LaunchConfiguration("world")
