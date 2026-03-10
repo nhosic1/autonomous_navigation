@@ -16,6 +16,54 @@
   gz_type_name: "ignition.msgs.Image"
   direction: GZ_TO_ROS
 
+- ros_topic_name: "/sim/autonomous_vehicle/sonar_front_bumper_center/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_front_bumper_center/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "ignition.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/sim/autonomous_vehicle/sonar_front_bumper_left/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_front_bumper_left/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "ignition.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/sim/autonomous_vehicle/sonar_front_bumper_right/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_front_bumper_right/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "ignition.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/sim/autonomous_vehicle/sonar_left_side_bumper/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_left_side_bumper/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "ignition.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/sim/autonomous_vehicle/sonar_right_side_bumper/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_right_side_bumper/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "ignition.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/sim/autonomous_vehicle/sonar_rear_bumper_center/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_rear_bumper_center/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "ignition.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/sim/autonomous_vehicle/sonar_rear_bumper_left/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_rear_bumper_left/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "ignition.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/sim/autonomous_vehicle/sonar_rear_bumper_right/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_rear_bumper_right/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "ignition.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
 - ros_topic_name: "/autonomous_vehicle/front_left_wheel_steering_joint/cmd_pos"
   gz_topic_name: "/model/autonomous_vehicle/joint/front_left_wheel_steering_joint/0/cmd_pos"
   ros_type_name: "std_msgs/msg/Float64"
@@ -46,7 +94,7 @@
   gz_type_name: "ignition.msgs.Model"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/autonomous_vehicle/imu_sensor/imu"
+- ros_topic_name: "/sim/autonomous_vehicle/imu_sensor/imu"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/imu_sensor/imu"
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "ignition.msgs.IMU"

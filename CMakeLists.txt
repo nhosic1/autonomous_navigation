@@ -62,13 +62,13 @@ if(NOT BUILD_RPI)
   add_library(pid_controller SHARED src/pid_controller.cpp)
 endif()
 
-add_executable(obstacle_detector src/obstacle_detector.cpp)
-target_link_libraries(obstacle_detector stereo_processing ${PCL_LIBRARIES})
-target_include_directories(obstacle_detector PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-target_compile_features(obstacle_detector PUBLIC c_std_99 cxx_std_17)
-ament_target_dependencies(obstacle_detector rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV image_transport tf2 tf2_geometry_msgs pcl_conversions)
+# add_executable(obstacle_detector src/obstacle_detector.cpp)
+# target_link_libraries(obstacle_detector stereo_processing ${PCL_LIBRARIES})
+# target_include_directories(obstacle_detector PUBLIC
+#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+#   $<INSTALL_INTERFACE:include>)
+# target_compile_features(obstacle_detector PUBLIC c_std_99 cxx_std_17)
+# ament_target_dependencies(obstacle_detector rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV image_transport tf2 tf2_geometry_msgs pcl_conversions)
 
 add_executable(visual_odom_estimator src/visual_odom_estimator.cpp)
 target_link_libraries(visual_odom_estimator stereo_processing localization ${PCL_LIBRARIES})
@@ -137,6 +137,13 @@ target_include_directories(joint_controller PUBLIC
 target_compile_features(joint_controller PUBLIC c_std_99 cxx_std_17)
 ament_target_dependencies(joint_controller rclcpp std_msgs sensor_msgs nav_msgs)
 
+add_executable(sensor_message_normalizer src/sensor_message_normalizer.cpp)
+target_include_directories(sensor_message_normalizer PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(sensor_message_normalizer PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(sensor_message_normalizer rclcpp sensor_msgs)
+
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY worlds DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY models DESTINATION share/${PROJECT_NAME})
@@ -160,7 +167,7 @@ install(TARGETS nav2_pure_pursuit_controller
   RUNTIME DESTINATION bin
 )
 
-install(TARGETS obstacle_detector DESTINATION lib/${PROJECT_NAME})
+# install(TARGETS obstacle_detector DESTINATION lib/${PROJECT_NAME})
 install(TARGETS visual_odom_estimator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_camera_calibrator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_viewer DESTINATION lib/${PROJECT_NAME})
@@ -168,6 +175,7 @@ install(TARGETS state_monitor DESTINATION lib/${PROJECT_NAME})
 install(TARGETS localization_initializer DESTINATION lib/${PROJECT_NAME})
 install(TARGETS wheel_odom_estimator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS joint_controller DESTINATION lib/${PROJECT_NAME})
+install(TARGETS sensor_message_normalizer DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_RPI)
   install(TARGETS frame_publisher DESTINATION lib/${PROJECT_NAME})
@@ -191,7 +199,6 @@ if(NOT BUILD_RPI)
 
   install(PROGRAMS
     scripts/state_monitor.py
-    scripts/imu_covariance_fixer.py
     DESTINATION lib/${PROJECT_NAME}
   )
 endif()

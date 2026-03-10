@@ -57,14 +57,6 @@ def generate_launch_description():
         parameters=[{"sim": sim, "data_folder": data_folder, "use_sim_time": sim}],
     )
 
-    imu_covariance_fixer = Node(
-            package=package_name,
-            executable="imu_covariance_fixer.py",
-            name="imu_covariance_fixer",
-            output="screen",
-            parameters=[{"use_sim_time": sim}],
-        )
-
     ekf_node = Node(
         package="robot_localization",
         executable="ekf_node",
@@ -86,7 +78,6 @@ def generate_launch_description():
             data_folder_arg,
             robot_state_publisher,
             # joint_state_publisher,
-            imu_covariance_fixer,
             TimerAction(
                 period=0.2,
                 actions=[

@@ -7,7 +7,8 @@ import os
 
 
 def generate_launch_description():
-    package_share_dir = get_package_share_directory("autonomous_navigation")
+    package_name = "autonomous_navigation"
+    package_share_dir = get_package_share_directory(package_name)
     config_path = os.path.join(package_share_dir, "config", "ros_gz_bridge_config.yaml")
     model_path = os.path.join(package_share_dir, "models", "autonomous_vehicle", "model.urdf")
     # model_path = os.path.join(package_share_dir, "models", "ackermann")
@@ -25,6 +26,15 @@ def generate_launch_description():
     ignition_gazebo_process = ExecuteProcess(
         cmd=["ign", "gazebo", world], output="screen"
     )
+
+    sensor_message_normalizer = Node(
+        package=package_name,
+        executable="sensor_message_normalizer",
+        name="sensor_message_normalizer",
+        output="screen",
+        parameters=[{"use_sim_time": True}],
+    )
+
     return LaunchDescription(
         [
             world_arg,
@@ -42,5 +52,6 @@ def generate_launch_description():
                 output="screen",
                 ros_arguments=["-p", f"config_file:={config_path}"],
             ),
+            sensor_message_normalizer,
         ]
     )
