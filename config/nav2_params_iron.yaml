@@ -78,7 +78,7 @@ local_costmap:
       height: 3
       resolution: 0.0666667
       footprint: "[ [0.505, 0.31], [0.505, -0.31], [-0.505, -0.31], [-0.505, 0.31] ]"
-      plugins: ["static_layer"]
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -127,7 +127,7 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 5.0
+      update_frequency: 10.0
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
@@ -138,8 +138,9 @@ global_costmap:
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
-        observation_sources: "stereo_cloud"
-        stereo_cloud:
+        observation_sources: "stereo_camera sonar_front_bumper_center sonar_front_bumper_left sonar_front_bumper_right sonar_left_side_bumper sonar_right_side_bumper sonar_rear_bumper_center sonar_rear_bumper_left sonar_rear_bumper_right"
+        # observation_sources: "stereo_camera"
+        stereo_camera:
           topic: /autonomous_vehicle/stereo/pointcloud
           data_type: PointCloud2
           max_obstacle_height: 2.0
@@ -150,17 +151,78 @@ global_costmap:
           raytrace_min_range: 0.0
           clearing: True
           marking: True
-        # ultrasonic_cloud:
-        #   topic: /autonomous_vehicle/ultrasonic/pointcloud
-        #   data_type: PointCloud2
-        #   max_obstacle_height: 2.0
-        #   min_obstacle_height: 0.05
-        #   obstacle_max_range: 1.5
-        #   obstacle_min_range: 0.0
-        #   raytrace_max_range: 2.5
-        #   raytrace_min_range: 0.0
-        #   clearing: True
-        #   marking: True
+        sonar_front_bumper_center:
+          topic: /autonomous_vehicle/sonar_front_bumper_center/pointcloud
+          data_type: PointCloud2
+          max_obstacle_height: 0.3
+          min_obstacle_height: -0.1
+          obstacle_max_range: 2.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
+        sonar_front_bumper_left:
+          topic: /autonomous_vehicle/sonar_front_bumper_left/pointcloud
+          data_type: PointCloud2
+          max_obstacle_height: 0.3
+          min_obstacle_height: -0.1
+          obstacle_max_range: 2.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
+        sonar_front_bumper_right:
+          topic: /autonomous_vehicle/sonar_front_bumper_right/pointcloud
+          data_type: PointCloud2
+          max_obstacle_height: 0.3
+          min_obstacle_height: -0.1
+          obstacle_max_range: 2.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
+        sonar_left_side_bumper:
+          topic: /autonomous_vehicle/sonar_left_side_bumper/pointcloud
+          data_type: PointCloud2
+          max_obstacle_height: 0.3
+          min_obstacle_height: -0.1
+          obstacle_max_range: 2.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
+        sonar_right_side_bumper:
+          topic: /autonomous_vehicle/sonar_right_side_bumper/pointcloud
+          data_type: PointCloud2
+          max_obstacle_height: 0.3
+          min_obstacle_height: -0.1
+          obstacle_max_range: 2.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
+        sonar_rear_bumper_center:
+          topic: /autonomous_vehicle/sonar_rear_bumper_center/pointcloud
+          data_type: PointCloud2
+          max_obstacle_height: 0.3
+          min_obstacle_height: -0.1
+          obstacle_max_range: 2.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
+        sonar_rear_bumper_left:
+          topic: /autonomous_vehicle/sonar_rear_bumper_left/pointcloud
+          data_type: PointCloud2
+          max_obstacle_height: 0.3
+          min_obstacle_height: -0.1
+          obstacle_max_range: 2.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
+        sonar_rear_bumper_right:
+          topic: /autonomous_vehicle/sonar_rear_bumper_right/pointcloud
+          data_type: PointCloud2
+          max_obstacle_height: 0.3
+          min_obstacle_height: -0.1
+          obstacle_max_range: 2.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
