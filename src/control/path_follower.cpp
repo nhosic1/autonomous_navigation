@@ -15,9 +15,9 @@
 #include <tf2_ros/buffer.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
-#include "autonomous_navigation/pid_controller.hpp"
-#include "autonomous_navigation/pure_pursuit.hpp"
-#include "autonomous_navigation/vehicle_constants.hpp"
+#include "autonomous_navigation/common/vehicle_constants.hpp"
+#include "autonomous_navigation/control/pid_controller.hpp"
+#include "autonomous_navigation/control/pure_pursuit.hpp"
 
 typedef message_filters::sync_policies::ApproximateTime<nav_msgs::msg::Odometry, sensor_msgs::msg::JointState> approximate_time_policy;
 typedef message_filters::Synchronizer<approximate_time_policy> approximate_time_synchronizer;
@@ -71,8 +71,9 @@ private:
 
         Pose current_pose(Point(x, y), yaw);
 
-        // Get the current average angular velocity of the rear wheels from joint state msg
-        double current_angular_velocity = (joint_state_msg_ptr->velocity[2] + joint_state_msg_ptr->velocity[3]) / 2;
+        // Estimate the current linear speed from the average rear wheel angular velocity.
+        const double current_linear_velocity =
+            ((joint_state_msg_ptr->velocity[2] + joint_state_msg_ptr->velocity[3]) / 2.0) * WHEEL_RADIUS;
 
         // Declare motion commands
         double steering_angle;
@@ -83,7 +84,7 @@ private:
 
         try
         {
-            std::tie(steering_angle, angular_velocity) = pure_pursuit_controller_.get_motion_controls(current_pose, current_angular_velocity);
+            std::tie(steering_angle, angular_velocity) = pure_pursuit_controller_.get_motion_controls(current_pose, current_linear_velocity);
         }
         catch (const std::runtime_error &e)
         {

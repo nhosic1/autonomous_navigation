@@ -1,8 +1,7 @@
 #include <stdexcept>
 #include <optional>
-#include "autonomous_navigation/vehicle_constants.hpp"
-#include "autonomous_navigation/pure_pursuit.hpp"
-#include <iostream>
+#include "autonomous_navigation/common/vehicle_constants.hpp"
+#include "autonomous_navigation/control/pure_pursuit.hpp"
 #include <algorithm>
 
 bool Point::operator==(const Point &point) const
@@ -13,13 +12,13 @@ bool Point::operator==(const Point &point) const
 
 PurePursuitController::PurePursuitController(const std::vector<Point> &path, double v_max, double ld_min, double K_v_turn, double K_v_stop, double K_ld) : path_(path), v_max_(v_max), ld_min_(ld_min), K_v_turn_(K_v_turn), K_v_stop_(K_v_stop), K_ld_(K_ld), v_stop_controller_(K_v_stop, 0.0, 0.0, 0.0) {}
 
-std::pair<double, double> PurePursuitController::get_motion_controls(Pose current_pose, double current_angular_velocity)
+std::pair<double, double> PurePursuitController::get_motion_controls(Pose current_pose, double current_linear_velocity)
 {
     if (path_.empty())
         return {0.0, 0.0};
 
-    double v_cur = current_angular_velocity * WHEEL_RADIUS;
-    double lookahead_distance = std::max(K_ld_ * v_cur, ld_min_);
+    const double current_speed = std::abs(current_linear_velocity);
+    double lookahead_distance = std::max(K_ld_ * current_speed, ld_min_);
 
     Point target_point = find_target_point(current_pose.position, lookahead_distance);
 
@@ -32,9 +31,6 @@ std::pair<double, double> PurePursuitController::get_motion_controls(Pose curren
 
     Point target_point_local = transform_to_local_frame(target_point, current_pose);
 
-    std::cout << "Current position (odom): (" << current_pose.position.x << ", " << current_pose.position.y << ")" << std::endl;
-    std::cout << "Target point (odom): (" << target_point.x << ", " << target_point.y << ")" << std::endl;
-    std::cout << "Target point (local): (" << target_point_local.x << ", " << target_point_local.y << ")" << std::endl;
 
     if (target_point_local.x < 0)
         throw std::runtime_error("Cannot compute steering angle. Target point is behind the vehicle.");
@@ -43,26 +39,22 @@ std::pair<double, double> PurePursuitController::get_motion_controls(Pose curren
     double target_point_distance = sqrt(pow(target_point_local.x, 2) + pow(target_point_local.y, 2));
     double steering_angle;
 
-    std::cout << "Target point angle: " << target_point_angle << std::endl;
-    std::cout << "Target point distance: " << target_point_distance << std::endl;
 
     if (fabs(target_point_angle) < 1e-6)
         steering_angle = 0.0;
     else
     {
         double steering_radius = fabs(target_point_distance / (2 * sin(target_point_angle)));
-        std::cout << "Steering radius: " << steering_radius << std::endl;
         steering_angle = atan2(WHEEL_BASE, steering_radius);
 
         if (target_point_local.y < 0)
             steering_angle *= -1;
 
         // Define steering limit of bicycle model
-        double steering_limit = atan(WHEEL_BASE / (MINIMUM_TURNING_RADIUS + WHEEL_SEPARATION / 2));
+        double steering_limit = atan(WHEEL_BASE / MINIMUM_TURNING_RADIUS);
 
         if (fabs(steering_angle) > steering_limit)
         {
-            std::cerr << "[WARN] Computed steering angle (" << steering_angle <<  ") exceeds vehicle limits. Limiting to range [" << -steering_limit << ", " << steering_limit << "]" << std::endl;
             steering_angle = std::clamp(steering_angle, -steering_limit, steering_limit);
         }
             
@@ -74,8 +66,6 @@ std::pair<double, double> PurePursuitController::get_motion_controls(Pose curren
     if (target_point == path_.back())
     {
         w = std::min(v_turn, v_stop_controller_.get_control(target_point_distance)) / WHEEL_RADIUS;
-        std::cout << "Goal is within lookahead distance." << std::endl;
-        std::cout << "v stop controller output: " << v_stop_controller_.get_control(target_point_distance) << std::endl;
     }
     else
     {

@@ -1,5 +1,5 @@
 #include <opencv2/opencv.hpp>
-#include "autonomous_navigation/localization.hpp"
+#include "autonomous_navigation/localization/localization.hpp"
 
 namespace loc
 {
@@ -91,7 +91,7 @@ namespace loc
                 {
                     // Ignore matched points inconsistent with estimated position
                     const cv::Point2d point_2D_proj(static_cast<double>(points_2D_proj[i].x), static_cast<double>(points_2D_proj[i].y));
-                    if (cv::norm(point_2D_matched - point_2D_proj) < 100.0)
+                    if (cv::norm(point_2D_matched - point_2D_proj) < 80.0)
                     {
                         points_2D_pnp.push_back(point_2D_matched);
                         points_3D_pnp.push_back(points_3D[i]);

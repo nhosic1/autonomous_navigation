@@ -5,7 +5,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <unordered_map>
-#include "autonomous_navigation/vehicle_constants.hpp"
+#include "autonomous_navigation/common/vehicle_constants.hpp"
 
 class WheelOdometryEstimator : public rclcpp::Node
 {

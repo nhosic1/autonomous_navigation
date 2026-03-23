@@ -1,0 +1,7 @@
+<library path="nav2_ackermann_back_up_behavior">
+  <class
+    type="autonomous_navigation::AckermannBackUp"
+    base_class_type="nav2_core::Behavior">
+    <description>Ackermann reverse-turn recovery behavior that backs up until a forward escape is feasible.</description>
+  </class>
+</library>

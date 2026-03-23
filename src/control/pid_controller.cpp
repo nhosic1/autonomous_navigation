@@ -1,4 +1,4 @@
-#include "autonomous_navigation/pid_controller.hpp"
+#include "autonomous_navigation/control/pid_controller.hpp"
 
 PIDController::PIDController(double K_p, double K_i, double K_d, double target_state): K_p_(K_p), K_i_(K_i), K_d_(K_d), target_state_(target_state) {}
 

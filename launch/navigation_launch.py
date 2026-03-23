@@ -58,6 +58,7 @@ def generate_launch_description():
                 executable='behavior_server',
                 name='behavior_server',
                 output='screen',
+                remappings=[("cmd_vel", "cmd_vel_nav")],
                 parameters=[nav2_params_path, {"use_sim_time": sim}],
             ),
             Node(

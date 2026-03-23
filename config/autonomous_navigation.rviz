@@ -4,8 +4,6 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
-        - /Odometry1/Topic1
-        - /Odometry1/Shape1
         - /Image1/Topic1
         - /PointCloud21/Topic1
       Splitter Ratio: 0.5
@@ -97,7 +95,7 @@ Visualization Manager:
         Alpha: 1
         Axes Length: 1
         Axes Radius: 0.10000000149011612
-        Color: 255; 25; 0
+        Color: 98; 160; 234
         Head Length: 0.10000000149011612
         Head Radius: 0.09000000357627869
         Shaft Length: 0.30000001192092896

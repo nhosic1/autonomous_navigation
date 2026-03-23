@@ -1,11 +1,12 @@
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <memory>
 #include <nav2_util/node_utils.hpp>
 #include <nav2_util/geometry_utils.hpp>
 #include <nav2_core/controller_exceptions.hpp>
-#include "autonomous_navigation/nav2_pure_pursuit_controller.hpp"
-#include "autonomous_navigation/vehicle_constants.hpp"
+#include "autonomous_navigation/common/vehicle_constants.hpp"
+#include "autonomous_navigation/nav2/nav2_pure_pursuit_controller.hpp"
 
 using nav2_util::declare_parameter_if_not_declared;
 using nav2_util::geometry_utils::euclidean_distance;
@@ -37,6 +38,7 @@ namespace nav2_pure_pursuit_controller
         declare_parameter_if_not_declared(node, plugin_name_ + ".K_v_turn", rclcpp::ParameterValue(1.0));
         declare_parameter_if_not_declared(node, plugin_name_ + ".K_v_stop", rclcpp::ParameterValue(-1.0));
         declare_parameter_if_not_declared(node, plugin_name_ + ".K_ld", rclcpp::ParameterValue(0.5));
+        declare_parameter_if_not_declared(node, plugin_name_ + ".ld_goal", rclcpp::ParameterValue(0.75));
 
         double v_max;
         double ld_min;
@@ -49,6 +51,7 @@ namespace nav2_pure_pursuit_controller
         node->get_parameter(plugin_name_ + ".K_v_turn", K_v_turn);
         node->get_parameter(plugin_name_ + ".K_v_stop", K_v_stop);
         node->get_parameter(plugin_name_ + ".K_ld", K_ld);
+        node->get_parameter(plugin_name_ + ".ld_goal", ld_goal_);
 
         pure_pursuit_controller_ = PurePursuitController(std::vector<Point>(), v_max, ld_min, K_v_turn, K_v_stop, K_ld);
 
@@ -81,8 +84,6 @@ namespace nav2_pure_pursuit_controller
         const geometry_msgs::msg::Twist &velocity,
         nav2_core::GoalChecker *goal_checker)
     {
-        (void)goal_checker;
-
         // Get rear_axle pose in odom frame
         tf2::Transform pose_tf;
         tf2::fromMsg(pose.pose, pose_tf);
@@ -95,23 +96,26 @@ namespace nav2_pure_pursuit_controller
         double yaw = tf2::getYaw(Q_tf2);
 
         Pose current_pose(Point(x, y), yaw);
-        double current_angular_velocity = velocity.angular.z;
+        const double current_linear_velocity = velocity.linear.x;
 
         double steering_angle, angular_velocity, linear_velocity;
 
+        if (goal_checker != nullptr && has_goal_pose_ &&
+            goal_checker->isGoalReached(pose.pose, goal_pose_map_, velocity))
+        {
+            geometry_msgs::msg::TwistStamped cmd_vel;
+            cmd_vel.header.stamp = clock_->now();
+            cmd_vel.header.frame_id = pose.header.frame_id;
+            return cmd_vel;
+        }
+
         try
         {
-            std::tie(steering_angle, angular_velocity) = pure_pursuit_controller_.get_motion_controls(current_pose, current_angular_velocity);
+            std::tie(steering_angle, angular_velocity) = pure_pursuit_controller_.get_motion_controls(current_pose, current_linear_velocity);
         }
         catch (const std::runtime_error &e)
         {
-            // Stop the vehicle
-            angular_velocity = 0.0;
-            steering_angle = 0.0;
-
             RCLCPP_ERROR(logger_, "Controller error: %s", e.what());
-            RCLCPP_ERROR(logger_, "Stopping the vehicle.");
-
             throw nav2_core::ControllerException(e.what());
         }
 
@@ -129,7 +133,6 @@ namespace nav2_pure_pursuit_controller
         cmd_vel.twist.angular.y = 0.0;
         cmd_vel.twist.angular.z = linear_velocity * std::tan(steering_angle) / WHEEL_BASE;
 
-        RCLCPP_INFO(logger_, "COMMAND: Steering angle: %.3f, Linear velocity: %.3f", steering_angle, linear_velocity);
 
         return cmd_vel;
     }
@@ -138,9 +141,14 @@ namespace nav2_pure_pursuit_controller
     {
         global_plan_ = path;
         std::vector<Point> transformed_path;
+        has_goal_pose_ = !path.poses.empty();
+
+        if (has_goal_pose_)
+        {
+            goal_pose_map_ = path.poses.back().pose;
+        }
 
         T_map_to_odom_ = get_transform("odom", "map");
-        tf2::Transform T_odom_to_map = T_map_to_odom_.inverse();
 
         // Transform the global plan from /map to /odom frame
         transformed_path.reserve(path.poses.size());
@@ -150,21 +158,27 @@ namespace nav2_pure_pursuit_controller
             tf2::fromMsg(path_point_msg.pose, path_point_tf);
             tf2::Transform transformed_path_point = T_map_to_odom_ * path_point_tf;
 
-            std::cout << "Path point (map): (" << path_point_tf.getOrigin().x() << ", " << path_point_tf.getOrigin().y() << ")" << " --> " << "(odom): (" << transformed_path_point.getOrigin().x() << ", " << transformed_path_point.getOrigin().y() << ")" << std::endl;
 
             transformed_path.emplace_back(transformed_path_point.getOrigin().x(), transformed_path_point.getOrigin().y());
         }
 
+        if (has_goal_pose_ && ld_goal_ > 1e-6)
+        {
+            tf2::Transform goal_pose_tf;
+            tf2::fromMsg(goal_pose_map_, goal_pose_tf);
+            tf2::Transform goal_pose_odom_tf = T_map_to_odom_ * goal_pose_tf;
+
+            const double goal_yaw = tf2::getYaw(goal_pose_odom_tf.getRotation());
+            const double goal_x = goal_pose_odom_tf.getOrigin().x();
+            const double goal_y = goal_pose_odom_tf.getOrigin().y();
+
+            transformed_path.emplace_back(
+                goal_x + ld_goal_ * std::cos(goal_yaw),
+                goal_y + ld_goal_ * std::sin(goal_yaw));
+        }
+
         pure_pursuit_controller_.set_path(transformed_path);
 
-        RCLCPP_INFO(logger_, "Plan received!");
-        RCLCPP_INFO(logger_, "Odom frame transform: x = %.3f, y = %.3f, yaw = %.3f", T_odom_to_map.getOrigin().x(), T_odom_to_map.getOrigin().y(), tf2::getYaw(T_odom_to_map.getRotation()));
-        RCLCPP_INFO(logger_, "Tansformed plan points:");
-        for (size_t i = 0; i < std::min(transformed_path.size(), size_t(5)); ++i)
-        {
-            const Point &p = transformed_path[i];
-            RCLCPP_INFO(logger_, "Point %zu: x = %.3f, y = %.3f", i, p.x, p.y);
-        }
 
     }
 

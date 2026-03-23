@@ -3,7 +3,7 @@
 
 #include <cmath>
 #include <vector>
-#include "autonomous_navigation/pid_controller.hpp"
+#include "autonomous_navigation/control/pid_controller.hpp"
 
 struct Point
 {
@@ -47,11 +47,11 @@ public:
      * based on the kinematic bicycle model of the 4-wheel vehicle.
      *
      * @param current_pose The current pose of the vehicle's rear wheel axle, which includes its position and orientation.
-     * @param current_velocity The current average angular velocity (in radians per second) of the rear wheels.
+     * @param current_linear_velocity The current linear velocity of the vehicle at the rear axle (in meters per second).
      * @return A pair containing the computed steering angle (in radians) and the angular velocity for the rear wheels (in radians per second).
      * @throws std::runtime_error If the target point is behind the vehicle or if the computed steering angle exceeds the vehicle's steering limits.
      */
-    std::pair<double, double> get_motion_controls(Pose current_pose, double current_velocity);
+    std::pair<double, double> get_motion_controls(Pose current_pose, double current_linear_velocity);
     void set_path(const std::vector<Point> &path);
 
 private:

@@ -22,8 +22,8 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include "autonomous_navigation/stereo_processing.hpp"
-#include "autonomous_navigation/localization.hpp"
+#include "autonomous_navigation/localization/localization.hpp"
+#include "autonomous_navigation/perception/stereo_processing.hpp"
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> approximate_time_policy;
 typedef message_filters::Synchronizer<approximate_time_policy> approximate_time_synchronizer;
@@ -33,12 +33,12 @@ class VisualOdometryEstimator : public rclcpp::Node
 public:
     VisualOdometryEstimator() : Node("visual_odom_estimator")
     {
-        // Create a timer to check FPS
-        timer_ = this->create_wall_timer(std::chrono::seconds(1), [this]()
+        // Report average FPS over a longer window to keep the logs readable.
+        timer_ = this->create_wall_timer(std::chrono::seconds(5), [this]()
                                          {
-            RCLCPP_INFO(this->get_logger(), "FPS = %d", callback_count_);
+            RCLCPP_INFO(this->get_logger(), "FPS = %.1f", callback_count_ / 5.0);
 
-            // Reset the callback count
+            // Reset the callback count for the next reporting window.
             callback_count_ = 0; });
 
         this->declare_parameter("snapshot", false);

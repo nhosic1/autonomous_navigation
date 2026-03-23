@@ -7,7 +7,7 @@
 #include <cv_bridge/cv_bridge.hpp>
 #include <filesystem>
 #include <ament_index_cpp/get_package_share_directory.hpp>
-#include "autonomous_navigation/stereo_processing.hpp"
+#include "autonomous_navigation/perception/stereo_processing.hpp"
 
 typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> approximate_time_policy;
 typedef message_filters::Synchronizer<approximate_time_policy> approximate_time_synchronizer;

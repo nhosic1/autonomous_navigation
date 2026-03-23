@@ -1,15 +1,16 @@
-#ifndef NAV2_PURE_PURSUIT_CONTROLLER_HPP
-#define NAV2_PURE_PURSUIT_CONTROLLER_HPP
+#ifndef AUTONOMOUS_NAVIGATION__NAV2_PURE_PURSUIT_CONTROLLER_HPP_
+#define AUTONOMOUS_NAVIGATION__NAV2_PURE_PURSUIT_CONTROLLER_HPP_
 
 #include <string>
 #include <vector>
 #include <memory>
 
 #include <nav2_core/controller.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <pluginlib/class_list_macros.hpp>
-#include "autonomous_navigation/pure_pursuit.hpp"
+#include "autonomous_navigation/control/pure_pursuit.hpp"
 
 namespace nav2_pure_pursuit_controller
 {
@@ -51,8 +52,11 @@ private:
 
   nav_msgs::msg::Path global_plan_;
   PurePursuitController pure_pursuit_controller_;
+  geometry_msgs::msg::Pose goal_pose_map_;
+  double ld_goal_{0.75};
+  bool has_goal_pose_{false};
 };
 
 }  // namespace nav2_pure_pursuit_controller
 
-# endif // NAV2_PURE_PURSUIT_CONTROLLER_HPP
+#endif  // AUTONOMOUS_NAVIGATION__NAV2_PURE_PURSUIT_CONTROLLER_HPP_
