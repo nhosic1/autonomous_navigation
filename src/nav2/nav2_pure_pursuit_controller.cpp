@@ -101,7 +101,7 @@ namespace nav2_pure_pursuit_controller
         double steering_angle, angular_velocity, linear_velocity;
 
         if (goal_checker != nullptr && has_goal_pose_ &&
-            goal_checker->isGoalReached(pose.pose, goal_pose_map_, velocity))
+            goal_checker->isGoalReached(pose.pose, goal_pose_odom_, velocity))
         {
             geometry_msgs::msg::TwistStamped cmd_vel;
             cmd_vel.header.stamp = clock_->now();
@@ -143,11 +143,6 @@ namespace nav2_pure_pursuit_controller
         std::vector<Point> transformed_path;
         has_goal_pose_ = !path.poses.empty();
 
-        if (has_goal_pose_)
-        {
-            goal_pose_map_ = path.poses.back().pose;
-        }
-
         T_map_to_odom_ = get_transform("odom", "map");
 
         // Transform the global plan from /map to /odom frame
@@ -162,19 +157,23 @@ namespace nav2_pure_pursuit_controller
             transformed_path.emplace_back(transformed_path_point.getOrigin().x(), transformed_path_point.getOrigin().y());
         }
 
-        if (has_goal_pose_ && ld_goal_ > 1e-6)
+        if (has_goal_pose_)
         {
-            tf2::Transform goal_pose_tf;
-            tf2::fromMsg(goal_pose_map_, goal_pose_tf);
-            tf2::Transform goal_pose_odom_tf = T_map_to_odom_ * goal_pose_tf;
+            tf2::Transform goal_pose_map_tf;
+            tf2::fromMsg(path.poses.back().pose, goal_pose_map_tf);
+            tf2::Transform goal_pose_odom_tf = T_map_to_odom_ * goal_pose_map_tf;
+            tf2::toMsg(goal_pose_odom_tf, goal_pose_odom_);
 
-            const double goal_yaw = tf2::getYaw(goal_pose_odom_tf.getRotation());
-            const double goal_x = goal_pose_odom_tf.getOrigin().x();
-            const double goal_y = goal_pose_odom_tf.getOrigin().y();
+            if (ld_goal_ > 1e-6)
+            {
+                const double goal_yaw = tf2::getYaw(goal_pose_odom_tf.getRotation());
+                const double goal_x = goal_pose_odom_tf.getOrigin().x();
+                const double goal_y = goal_pose_odom_tf.getOrigin().y();
 
-            transformed_path.emplace_back(
-                goal_x + ld_goal_ * std::cos(goal_yaw),
-                goal_y + ld_goal_ * std::sin(goal_yaw));
+                transformed_path.emplace_back(
+                    goal_x + ld_goal_ * std::cos(goal_yaw),
+                    goal_y + ld_goal_ * std::sin(goal_yaw));
+            }
         }
 
         pure_pursuit_controller_.set_path(transformed_path);
