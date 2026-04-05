@@ -104,16 +104,14 @@ target_include_directories(localization PUBLIC
   $<INSTALL_INTERFACE:include>)
 ament_target_dependencies(localization OpenCV)
 
-if(NOT BUILD_RPI)
-  add_library(pure_pursuit SHARED src/control/pure_pursuit.cpp)
-  target_include_directories(pure_pursuit PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>)
-  add_library(pid_controller SHARED src/control/pid_controller.cpp)
-  target_include_directories(pid_controller PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>)
-endif()
+add_library(pure_pursuit SHARED src/control/pure_pursuit.cpp)
+target_include_directories(pure_pursuit PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+add_library(pid_controller SHARED src/control/pid_controller.cpp)
+target_include_directories(pid_controller PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
 
 # add_executable(obstacle_detector src/perception/obstacle_detector.cpp)
 # target_link_libraries(obstacle_detector stereo_processing ${PCL_LIBRARIES})
@@ -250,6 +248,16 @@ install(TARGETS nav2_ackermann_back_up_action_bt_node
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
+install(TARGETS pid_controller
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+install(TARGETS pure_pursuit
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
 
 # install(TARGETS obstacle_detector DESTINATION lib/${PROJECT_NAME})
 install(TARGETS visual_odom_estimator DESTINATION lib/${PROJECT_NAME})
@@ -267,17 +275,6 @@ if(BUILD_RPI)
 endif()
 
 if(NOT BUILD_RPI)
-  install(TARGETS pid_controller
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
-  )
-  install(TARGETS pure_pursuit
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
-  )
-
   install(TARGETS path_follower DESTINATION lib/${PROJECT_NAME})
 
   install(PROGRAMS
