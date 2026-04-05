@@ -1,9 +1,9 @@
 #include <opencv2/opencv.hpp>
-#include "autonomous_navigation/localization.hpp"
+#include "autonomous_navigation/localization/localization.hpp"
 
 namespace loc
 {
-    void filter_points_with_RANSAC(const std::vector<cv::Point2d> &points_1, const std::vector<cv::Point2d> &points_2, const cv::Mat& camera_matrix, std::vector<cv::Point2d> &points_1_filtered, std::vector<cv::Point2d> &points_2_filtered, double confidence, double reproj_threshold)
+    void filter_points_with_RANSAC(const std::vector<cv::Point2d> &points_1, const std::vector<cv::Point2d> &points_2, const cv::Mat &camera_matrix, std::vector<cv::Point2d> &points_1_filtered, std::vector<cv::Point2d> &points_2_filtered, double confidence, double reproj_threshold)
     {
         // Use RANSAC to compute the essential matrix and filter outliers
         std::vector<uchar> inliers_mask;
@@ -14,19 +14,31 @@ namespace loc
         points_2_filtered.clear();
 
         // Filter points based on the inliers mask
-        for (size_t i = 0; i < points_1.size(); i++) {
-            if (inliers_mask[i]) {
+        for (size_t i = 0; i < points_1.size(); i++)
+        {
+            if (inliers_mask[i])
+            {
                 points_1_filtered.push_back(points_1[i]);
                 points_2_filtered.push_back(points_2[i]);
             }
         }
     }
 
-    // Accepts descriptor matcher compatible with ORB descriptors
-    // Accepts ORB keypoints and descriptors
-    // Accepts 2D and 3D points relative to the previous camera position
-    // Outputs rvec and tvec have CV_64F data type
-    bool compute_local_pose(cv::Mat camera_matrix, cv::Mat dist_coeffs, const cv::Ptr<cv::DescriptorMatcher> &matcher, const std::vector<cv::KeyPoint> &keypoints_prev, const cv::Mat &descriptors_prev, const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors, const std::vector<cv::Point2d> &points_2D, const std::vector<cv::Point3d> &points_3D, cv::Mat &rvec, cv::Mat &tvec)
+    // Estimates the current camera pose relative to the previous reference frame.
+    //
+    // Inputs:
+    // - keypoints_prev / descriptors_prev: ORB features from the previous reference image
+    // - keypoints / descriptors: ORB features from the current image
+    // - points_2D / points_3D: stereo observations from the previous reference image, where each
+    //   2D point corresponds to a 3D point expressed in the previous camera frame
+    // - rvec / tvec: initial pose guess for PnP; on success they are overwritten with the
+    //   estimated transform that maps previous-frame 3D points into the current camera frame
+    //
+    // Outputs:
+    // - points_2D_filtered / points_3D_filtered: the 2D-3D correspondences that survived
+    //   solvePnPRansac() and can be reused later as motion-consistent inliers
+    // - rvec / tvec: pose estimate returned by solvePnPRansac(); both have CV_64F data type
+    bool compute_local_pose(const cv::Mat &camera_matrix, const cv::Mat &dist_coeffs, const cv::Ptr<cv::DescriptorMatcher> &matcher, const std::vector<cv::KeyPoint> &keypoints_prev, const cv::Mat &descriptors_prev, const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors, const std::vector<cv::Point2d> &points_2D, const std::vector<cv::Point3d> &points_3D, std::vector<cv::Point2d> &points_2D_filtered, std::vector<cv::Point3d> &points_3D_filtered, cv::Mat &rvec, cv::Mat &tvec)
     {
         std::vector<std::vector<cv::DMatch>> matches;
 
@@ -35,7 +47,7 @@ namespace loc
         {
             matcher->knnMatch(descriptors_prev, descriptors, matches, 2);
         }
-        else 
+        else
         {
             return false;
         }
@@ -50,7 +62,7 @@ namespace loc
             if ((matches[i].size() == 1) || (matches[i].size() > 1 && matches[i][0].distance < ratio_threshold * matches[i][1].distance))
             {
                 // Ensure 1-to-1 matching
-                if (unique_train_ids.insert(matches[i][0].trainIdx).second) 
+                if (unique_train_ids.insert(matches[i][0].trainIdx).second)
                 {
                     points_1.push_back(keypoints_prev[matches[i][0].queryIdx].pt);
                     points_2.push_back(keypoints[matches[i][0].trainIdx].pt);
@@ -59,13 +71,15 @@ namespace loc
         }
 
         // Apply RANSAC with essential matrix as fitting model
-        std::vector<cv::Point2d> points_2D_matched_prev, points_2D_matched;
-        filter_points_with_RANSAC(points_1, points_2, camera_matrix, points_2D_matched_prev, points_2D_matched);
+        std::vector<cv::Point2d> &points_2D_matched_prev = points_1, &points_2D_matched = points_2;
+
+        // filter_points_with_RANSAC(points_1, points_2, camera_matrix, points_2D_matched_prev, points_2D_matched);
 
         // Convert 3D points from Point3d to Point3f (required by cv::projectPoints())
         std::vector<cv::Point3f> points_3D_f;
         points_3D_f.reserve(points_3D.size());
-        for (const auto& point : points_3D) {
+        for (const auto &point : points_3D)
+        {
             points_3D_f.emplace_back(static_cast<float>(point.x), static_cast<float>(point.y), static_cast<float>(point.z));
         }
 
@@ -82,12 +96,12 @@ namespace loc
             {
                 const cv::Point2d &point_2D_matched_prev = points_2D_matched_prev[j];
                 const cv::Point2d &point_2D_matched = points_2D_matched[j];
-                
+
                 if (point_2D == point_2D_matched_prev)
                 {
                     // Ignore matched points inconsistent with estimated position
                     const cv::Point2d point_2D_proj(static_cast<double>(points_2D_proj[i].x), static_cast<double>(points_2D_proj[i].y));
-                    if (cv::norm(point_2D_matched - point_2D_proj) < 100.0)
+                    if (cv::norm(point_2D_matched - point_2D_proj) < 80.0)
                     {
                         points_2D_pnp.push_back(point_2D_matched);
                         points_3D_pnp.push_back(points_3D[i]);
@@ -99,20 +113,38 @@ namespace loc
 
         // Run PnP algorithm to find local pose (rotation and translation vector)
         bool success = false;
+        std::vector<int> inliers; // Output inliers for RANSAC
 
         if (points_2D_pnp.size() >= 4)
         {
-            // Vectors with Point3d and Point2d objects are expected by cv::solvePnP()
-            success = cv::solvePnP(
-            points_3D_pnp,         // 3D points from previous iteration
-            points_2D_pnp,         // Corresponding 2D points from current frame
-            camera_matrix,         // Camera matrix
-            dist_coeffs,           // Distortion coefficients
-            rvec,                  // Output rotation vector
-            tvec,                  // Output translation vector
-            true,                  // Use initial guess
-            cv::SOLVEPNP_ITERATIVE // Flag (algorithm to use).
+            // Vectors with Point3d and Point2d objects are expected by cv::solvePnPRansac()
+            success = cv::solvePnPRansac(
+                points_3D_pnp,         // 3D points from previous iteration
+                points_2D_pnp,         // Corresponding 2D points from current frame
+                camera_matrix,         // Camera matrix
+                dist_coeffs,           // Distortion coefficients
+                rvec,                  // Output rotation vector
+                tvec,                  // Output translation vector
+                true,                  // Use initial guess
+                100,                   // Number of iterations
+                8.0,                   // Reprojection error threshold
+                0.99,                  // Confidence level
+                inliers,               // Output inliers
+                cv::SOLVEPNP_ITERATIVE // Flag (algorithm to use).
             );
+        }
+
+        if (success)
+        {
+            // Filter outliers
+            points_2D_filtered.clear();
+            points_3D_filtered.clear();
+            for (size_t i = 0; i < inliers.size(); i++)
+            {
+                int idx = inliers[i];
+                points_2D_filtered.push_back(points_2D_pnp[idx]);
+                points_3D_filtered.push_back(points_3D_pnp[idx]);
+            }
         }
 
         return success;
@@ -158,9 +190,12 @@ namespace loc
         double max_x_abs = 0.0;
         double max_y_abs = 0.0;
 
-        for (const auto &point : path_points) {
-            if (std::abs(point.x) > max_x_abs) max_x_abs = std::abs(point.x);
-            if (std::abs(point.y) > max_y_abs) max_y_abs = std::abs(point.y);
+        for (const auto &point : path_points)
+        {
+            if (std::abs(point.x) > max_x_abs)
+                max_x_abs = std::abs(point.x);
+            if (std::abs(point.y) > max_y_abs)
+                max_y_abs = std::abs(point.y);
         }
 
         double max_abs = std::max(max_x_abs, max_y_abs);

@@ -1,0 +1,71 @@
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="2" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <Fallback name="FallbackComputePathToPose">
+          <ReactiveSequence name="CheckIfNewPathNeeded">
+            <Inverter>
+              <GlobalUpdatedGoal/>
+            </Inverter>
+            <IsPathValid path="{path}"/>
+          </ReactiveSequence>
+          <ComputePathToPose
+            goal="{goal}"
+            path="{path}"
+            planner_id="GridBased"
+            error_code_id="{compute_path_error_code}"/>
+        </Fallback>
+        <Sequence name="FollowPathAndClearCostmapsOnSuccess">
+          <FollowPath
+            path="{path}"
+            controller_id="FollowPath"
+            error_code_id="{follow_path_error_code}"/>
+          <ClearEntireCostmap
+            name="ClearLocalCostmap-OnGoalReached"
+            service_name="local_costmap/clear_entirely_local_costmap"/>
+          <ClearEntireCostmap
+            name="ClearGlobalCostmap-OnGoalReached"
+            service_name="global_costmap/clear_entirely_global_costmap"/>
+        </Sequence>
+      </PipelineSequence>
+      <Fallback name="RecoveryFallback">
+        <!-- <Sequence name="ControllerRecovery">
+          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+          <Wait wait_duration="2.0"/>
+          <ComputePathToPose
+            goal="{goal}"
+            path="{path}"
+            planner_id="GridBased"
+            error_code_id="{compute_path_error_code}"/>
+        </Sequence> -->
+        <Sequence name="PlannerRecovery">
+          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+          <Fallback name="PlannerRecoveryActions">
+            <Sequence name="ClearCostmapsThenReplan">
+              <ClearEntireCostmap
+                name="ClearLocalCostmap-PlannerRecovery"
+                service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap
+                name="ClearGlobalCostmap-PlannerRecovery"
+                service_name="global_costmap/clear_entirely_global_costmap"/>
+              <ComputePathToPose
+                goal="{goal}"
+                path="{path}"
+                planner_id="GridBased"
+                error_code_id="{compute_path_error_code}"/>
+            </Sequence>
+            <Sequence name="BackUpThenReplan">
+              <BackUp backup_dist="0.50" backup_speed="0.30" time_allowance="8.0"/>
+              <ComputePathToPose
+                goal="{goal}"
+                path="{path}"
+                planner_id="GridBased"
+                error_code_id="{compute_path_error_code}"/>
+            </Sequence>
+            <AckermannBackUp goal="{goal}" time_allowance="25.0"/>
+          </Fallback>
+        </Sequence>
+      </Fallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

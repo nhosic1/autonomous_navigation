@@ -1,0 +1,19 @@
+# Error codes
+# Note: The expected priority order of the error should match the message order
+uint16 NONE=0
+uint16 UNKNOWN=730
+uint16 TIMEOUT=731
+uint16 TF_ERROR=732
+uint16 INVALID_INPUT=733
+uint16 COLLISION_AHEAD=734
+
+#goal definition
+builtin_interfaces/Duration time_allowance
+geometry_msgs/PoseStamped goal_pose
+---
+#result definition
+builtin_interfaces/Duration total_elapsed_time
+uint16 error_code
+---
+#feedback definition
+float32 heading_change

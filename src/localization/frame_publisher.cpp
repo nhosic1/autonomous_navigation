@@ -35,9 +35,6 @@ public:
         stream_config.size.height = frame_height;
         stream_config.pixelFormat = formats::RGB888;
 
-        // Rotate image
-        config->orientation = Orientation::Rotate180;
-
         // Validate the config (original config might be modified, if invalid)
         config->validate();
         camera_->configure(config.get());
@@ -118,7 +115,6 @@ private:
         {
             const Stream *stream = buffer_pair.first;
             FrameBuffer *buffer = buffer_pair.second;
-            const FrameMetadata &metadata = buffer->metadata();
 
             // Planes of the same buffer should use the same file descriptor
             size_t buffer_length = 0;
@@ -135,7 +131,7 @@ private:
 
             // send image data
             std_msgs::msg::Header hdr;
-            hdr.stamp = rclcpp::Time(int64_t(metadata.timestamp));
+            hdr.stamp = rclcpp::Clock().now();
             hdr.frame_id = "camera_" + std::to_string(camera_id_);
             const libcamera::StreamConfiguration &stream_cfg = stream->configuration();
 

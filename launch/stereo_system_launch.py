@@ -14,7 +14,7 @@ def generate_launch_description():
                     {"left_frame_publisher.camera_0.image.compressed.jpeg_quality": 50},
                 ],
                 remappings=[
-                    ("/left_frame_publisher/camera_0/image", "/left_camera/image"),
+                    ("/left_frame_publisher/camera_0/image", "/autonomous_vehicle/left_camera/image"),
                     (
                         "/left_frame_publisher/camera_0/image/compressed",
                         "/left_camera/image/compressed",
@@ -32,7 +32,7 @@ def generate_launch_description():
                     },
                 ],
                 remappings=[
-                    ("/right_frame_publisher/camera_1/image", "/right_camera/image"),
+                    ("/right_frame_publisher/camera_1/image", "/autonomous_vehicle/right_camera/image"),
                     (
                         "/right_frame_publisher/camera_1/image/compressed",
                         "/right_camera/image/compressed",

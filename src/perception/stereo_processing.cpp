@@ -2,7 +2,7 @@
 #include <filesystem>
 #include <cmath>
 #include <opencv2/ximgproc.hpp>
-#include "autonomous_navigation/stereo_processing.hpp"
+#include "autonomous_navigation/perception/stereo_processing.hpp"
 
 namespace sp
 {
@@ -191,8 +191,8 @@ namespace sp
         matcher->setMinDisparity(MIN_DISPARITY);
         matcher->setUniquenessRatio(10);
         matcher->setTextureThreshold(30);
-        matcher->setSpeckleRange(10);
-        matcher->setSpeckleWindowSize(200);
+        matcher->setSpeckleRange(20);
+        matcher->setSpeckleWindowSize(1000);
         // matcher->setPreFilterType(cv::StereoBM::PREFILTER_NORMALIZED_RESPONSE);
         matcher->setPreFilterSize(5);
         matcher->setPreFilterCap(32);
@@ -311,15 +311,15 @@ namespace sp
         cv::Mat formatted_disparity_map;
         format_disp_map_for_visualization(disparity_map, formatted_disparity_map, 1.0);
 
-        if (closest_point_3D.z < 10000)
+        if (closest_point_3D.z < 10.0)
         {
             cv::circle(formatted_disparity_map, closest_point_2D, 8, cv::Scalar(255, 0, 255), -1);
 
-            // Convert points from [mm] to [m] and set precision to 2 decimal places for text output
+            // Set precision to 2 decimal places for text output
             std::stringstream ss_x, ss_y, ss_z;
-            ss_x << std::fixed << std::setprecision(2) << closest_point_3D.x / 1000.0;
-            ss_y << std::fixed << std::setprecision(2) << closest_point_3D.y / 1000.0;
-            ss_z << std::fixed << std::setprecision(2) << closest_point_3D.z / 1000.0;
+            ss_x << std::fixed << std::setprecision(2) << closest_point_3D.x;
+            ss_y << std::fixed << std::setprecision(2) << closest_point_3D.y;
+            ss_z << std::fixed << std::setprecision(2) << closest_point_3D.z;
 
             std::string text = "(" + ss_x.str() + ", " + ss_y.str() + ", " + ss_z.str() + ")";
 
@@ -346,15 +346,15 @@ namespace sp
         cv::waitKey(1); // Wait for a key press (1 millisecond)
     }
 
-    // Output unit: [mm]
+    // Output unit: [m]
     // Output 3D points are represented in left camera's coordinate system
     // Output 2D points are pixels in left image that correspond to 3D points
     void compute_3D_points_from_disparity(const cv::Mat &disparity_map, const cv::Mat &Q, std::vector<cv::Point3d> &points_3D, std::vector<cv::Point2d> &points_2D, double &average_depth)
     {
-        double f = Q.at<double>(2, 3);        // unit: [mm]
+        double f = Q.at<double>(2, 3);        // unit: [m]
         double cx = -Q.at<double>(0, 3);      // unit: [px]
         double cy = -Q.at<double>(1, 3);      // unit: [px]
-        double Tx = 1.0 / Q.at<double>(3, 2); // unit: [mm] (value must be positive)
+        double Tx = 1.0 / Q.at<double>(3, 2); // unit: [m] (value must be positive)
         double total_depth = 0.0;
 
         // Compute 3D points from disparity map
@@ -380,7 +380,7 @@ namespace sp
         average_depth = total_depth / points_3D.size();
     }
 
-    // Output unit: [mm]
+    // Output unit: [m]
     // Output 3D points are represented in left camera's coordinate system
     // Output 2D points are pixels in left image that correspond to 3D points
     bool compute_3D_points_from_features(const cv::Ptr<cv::DescriptorMatcher> &matcher, const cv::Mat &P_L, const std::vector<cv::KeyPoint> &keypoints_L, const cv::Mat &descriptors_L, const cv::Mat &P_R, const std::vector<cv::KeyPoint> &keypoints_R, const cv::Mat &descriptors_R, std::vector<cv::Point3d> &points_3D, std::vector<cv::Point2d> &points_2D, double &average_depth)
@@ -398,7 +398,7 @@ namespace sp
         }
 
         // Filter matches using Lowe's ratio test
-        const float ratio_threshold = 0.8f;
+        const float ratio_threshold = 0.75f;
         std::set<int> unique_train_ids;
         std::vector<cv::Point2f> points_L, points_R;
 
@@ -410,7 +410,7 @@ namespace sp
                 cv::Point2f pt_R = keypoints_R[matches[i][0].trainIdx].pt;
 
                 // Check if y-coordinates are approximately equal, minimum stereo disparity is 7 and match is 1-to-1
-                if (std::abs(pt_L.y - pt_R.y) < 2.0 && (pt_L.x - pt_R.x >= 7.0) && unique_train_ids.insert(matches[i][0].trainIdx).second)
+                if (std::abs(pt_L.y - pt_R.y) < 1.0 && (pt_L.x - pt_R.x >= 7.0) && unique_train_ids.insert(matches[i][0].trainIdx).second)
                 {
                     points_L.push_back(pt_L);
                     points_R.push_back(pt_R);
@@ -494,7 +494,7 @@ namespace sp
 
         // Load disparity-to-depth mapping matrix
         fs["Q"] >> Q;
-        Q.convertTo(T, CV_64F);
+        Q.convertTo(Q, CV_64F);
 
         fs.release();
     }
