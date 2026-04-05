@@ -70,8 +70,16 @@ def generate_launch_description():
             Node(
                 package="nav2_lifecycle_manager",
                 executable="lifecycle_manager",
+                name="lifecycle_manager_navigation",
                 output="screen",
                 parameters=[{"autostart": True, "node_names": lifecycle_nodes, "use_sim_time": sim}],
+            ),
+            Node(
+                package=package_name,
+                executable="nav_cmd_gate",
+                name="nav_cmd_gate",
+                output="screen",
+                parameters=[{"use_sim_time": sim}],
             ),
         ]
     )

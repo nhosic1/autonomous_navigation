@@ -14,6 +14,7 @@ find_package(OpenCV REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -173,7 +174,15 @@ target_include_directories(localization_initializer PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(localization_initializer PUBLIC c_std_99 cxx_std_17)
-ament_target_dependencies(localization_initializer rclcpp std_msgs sensor_msgs tf2 tf2_geometry_msgs)
+ament_target_dependencies(localization_initializer
+  geometry_msgs
+  nav2_msgs
+  rclcpp
+  sensor_msgs
+  std_msgs
+  tf2
+  tf2_geometry_msgs
+  tf2_ros)
 
 add_executable(wheel_odom_estimator src/localization/wheel_odom_estimator.cpp)
 target_include_directories(wheel_odom_estimator PUBLIC
@@ -188,6 +197,18 @@ target_include_directories(joint_controller PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_compile_features(joint_controller PUBLIC c_std_99 cxx_std_17)
 ament_target_dependencies(joint_controller rclcpp std_msgs sensor_msgs nav_msgs)
+
+add_executable(nav_cmd_gate src/control/nav_cmd_gate.cpp)
+target_include_directories(nav_cmd_gate PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(nav_cmd_gate PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(nav_cmd_gate
+  geometry_msgs
+  nav2_msgs
+  rclcpp
+  rclcpp_action
+  std_srvs)
 
 add_executable(sensor_message_normalizer src/perception/sensor_message_normalizer.cpp)
 target_include_directories(sensor_message_normalizer PUBLIC
@@ -238,6 +259,7 @@ install(TARGETS state_monitor DESTINATION lib/${PROJECT_NAME})
 install(TARGETS localization_initializer DESTINATION lib/${PROJECT_NAME})
 install(TARGETS wheel_odom_estimator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS joint_controller DESTINATION lib/${PROJECT_NAME})
+install(TARGETS nav_cmd_gate DESTINATION lib/${PROJECT_NAME})
 install(TARGETS sensor_message_normalizer DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_RPI)

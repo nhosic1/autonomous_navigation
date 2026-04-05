@@ -33,12 +33,13 @@ public:
      *
      * @param path The list of points that define the path the vehicle needs to follow.
      * @param v_max The maximum velocity the vehicle can travel at.
-     * @param ld_min The minimum lookahead distance.
+     * @param d_lookahead_min The minimum lookahead distance.
+     * @param d_goal_tol The distance threshold to the final path point below which the controller commands stop.
      * @param K_v_turn A constant used to adjust the exponential deceleration during turns, which depends on the steering angle.
      * @param K_v_stop A constant used to adjust the proportional gain of the P controller that regulates deceleration when approaching the final path point.
      * @param K_ld A constant used to adjust the lookahead distance, which is proportional to the current linear velocity of the vehicle.
      */
-    PurePursuitController(const std::vector<Point> &path = {}, double v_max = 1.0, double ld_min = 0.15, double K_v_turn = 1.0, double K_v_stop = 1.0, double K_ld = 0.5);
+    PurePursuitController(const std::vector<Point> &path = {}, double v_max = 1.0, double d_lookahead_min = 0.15, double d_goal_tol = 0.1, double K_v_turn = 1.0, double K_v_stop = 1.0, double K_ld = 0.5);
 
     /**
      * @brief Computes the steering angle and velocity to drive the vehicle along the path using the Pure Pursuit algorithm.
@@ -55,16 +56,17 @@ public:
     void set_path(const std::vector<Point> &path);
 
 private:
-    Point find_target_point(Point current_position, double lookahead_distance);
+    Point find_target_point(Pose current_pose, double lookahead_distance);
     int find_closest_path_point_index(Point current_position, size_t start_index);
-    bool is_point_on_line_segment(Point p, Point p1, Point p2);
+    bool is_point_within_segment_bounds(Point p, Point p1, Point p2);
     std::optional<std::vector<Point>> find_line_segment_circle_intersections(Point line_point_1, Point line_point_2, Point circle_center, double circle_radius);
     Point transform_to_local_frame(Point global_point, Pose vehicle_pose);
 
     std::vector<Point> path_;
     size_t last_closest_path_point_index_ = 0;
     double v_max_;
-    double ld_min_;
+    double d_lookahead_min_;
+    double d_goal_tol_;
     double K_v_turn_;
     double K_v_stop_;
     double K_ld_;

@@ -24,11 +24,21 @@ namespace loc
         }
     }
 
-    // Accepts descriptor matcher compatible with ORB descriptors
-    // Accepts ORB keypoints and descriptors
-    // Accepts 2D of the previous frame and 3D points relative to the previous camera position
-    // Outputs rvec and tvec have CV_64F data type and transform 3D points from world frame to camera frame
-    bool compute_local_pose(cv::Mat camera_matrix, cv::Mat dist_coeffs, const cv::Ptr<cv::DescriptorMatcher> &matcher, const std::vector<cv::KeyPoint> &keypoints_prev, const cv::Mat &descriptors_prev, const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors, const std::vector<cv::Point2d> &points_2D, const std::vector<cv::Point3d> &points_3D, std::vector<cv::Point2d> &points_2D_filtered, std::vector<cv::Point3d> &points_3D_filtered, cv::Mat &rvec, cv::Mat &tvec)
+    // Estimates the current camera pose relative to the previous reference frame.
+    //
+    // Inputs:
+    // - keypoints_prev / descriptors_prev: ORB features from the previous reference image
+    // - keypoints / descriptors: ORB features from the current image
+    // - points_2D / points_3D: stereo observations from the previous reference image, where each
+    //   2D point corresponds to a 3D point expressed in the previous camera frame
+    // - rvec / tvec: initial pose guess for PnP; on success they are overwritten with the
+    //   estimated transform that maps previous-frame 3D points into the current camera frame
+    //
+    // Outputs:
+    // - points_2D_filtered / points_3D_filtered: the 2D-3D correspondences that survived
+    //   solvePnPRansac() and can be reused later as motion-consistent inliers
+    // - rvec / tvec: pose estimate returned by solvePnPRansac(); both have CV_64F data type
+    bool compute_local_pose(const cv::Mat &camera_matrix, const cv::Mat &dist_coeffs, const cv::Ptr<cv::DescriptorMatcher> &matcher, const std::vector<cv::KeyPoint> &keypoints_prev, const cv::Mat &descriptors_prev, const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors, const std::vector<cv::Point2d> &points_2D, const std::vector<cv::Point3d> &points_3D, std::vector<cv::Point2d> &points_2D_filtered, std::vector<cv::Point3d> &points_3D_filtered, cv::Mat &rvec, cv::Mat &tvec)
     {
         std::vector<std::vector<cv::DMatch>> matches;
 

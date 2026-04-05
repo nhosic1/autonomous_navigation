@@ -1,8 +1,10 @@
 #include <memory>
 #include <chrono>
+#include <string>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <nav2_msgs/srv/clear_entire_costmap.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
@@ -30,6 +32,11 @@ public:
 
         reset_odom_pub_ = this->create_publisher<std_msgs::msg::Bool>(
             "/reset_odom", 10);
+
+        clear_local_costmap_client_ = this->create_client<nav2_msgs::srv::ClearEntireCostmap>(
+            "local_costmap/clear_entirely_local_costmap");
+        clear_global_costmap_client_ = this->create_client<nav2_msgs::srv::ClearEntireCostmap>(
+            "global_costmap/clear_entirely_global_costmap");
 
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
         initialize_map_to_odom_tf();
@@ -111,13 +118,39 @@ private:
         current_map_to_odom_tf_.transform.translation.z = CHASSIS_HEIGHT;
         current_map_to_odom_tf_.transform.rotation = tf2::toMsg(q);
 
+        // Publish the updated transform immediately so costmap clearing uses the new pose.
+        publish_map_to_odom_tf();
+        rclcpp::sleep_for(200ms);
+
+        clear_costmap(clear_local_costmap_client_);
+        clear_costmap(clear_global_costmap_client_);
+
         RCLCPP_INFO(this->get_logger(), "Updated dynamic transform: map -> odom");
+    }
+
+    void clear_costmap(const rclcpp::Client<nav2_msgs::srv::ClearEntireCostmap>::SharedPtr &client)
+    {
+        const auto service_name = client->get_service_name();
+
+        if (!client->wait_for_service(1s)) {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Costmap clear service %s is not available; skipping clear for this initial pose update.",
+                service_name);
+            return;
+        }
+
+        auto request = std::make_shared<nav2_msgs::srv::ClearEntireCostmap::Request>();
+        client->async_send_request(request);
+        RCLCPP_INFO(this->get_logger(), "Requested costmap clear via %s.", service_name);
     }
 
     rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initial_pose_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr set_pose_pub_;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr reset_odom_pub_;
+    rclcpp::Client<nav2_msgs::srv::ClearEntireCostmap>::SharedPtr clear_local_costmap_client_;
+    rclcpp::Client<nav2_msgs::srv::ClearEntireCostmap>::SharedPtr clear_global_costmap_client_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
     rclcpp::TimerBase::SharedPtr tf_publish_timer_;
 

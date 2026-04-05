@@ -48,13 +48,13 @@ private:
   rclcpp::Logger logger_ {rclcpp::get_logger("Nav2PurePursuitController")};
   rclcpp::Clock::SharedPtr clock_;
 
-  tf2::Transform T_rear_axle_to_base_link_, T_map_to_odom_;
+  tf2::Transform T_base_link_rear_axle_, T_odom_map_;
 
   nav_msgs::msg::Path global_plan_;
   PurePursuitController pure_pursuit_controller_;
   geometry_msgs::msg::Pose goal_pose_odom_;
-  double ld_goal_{0.75};
   bool has_goal_pose_{false};
+  double d_goal_heading_;
 };
 
 }  // namespace nav2_pure_pursuit_controller

@@ -3,7 +3,7 @@ bt_navigator:
     global_frame: map
     robot_base_frame: base_link
     odom_topic: /odometry/filtered
-    bt_loop_duration: 10
+    bt_loop_duration: 15
     default_server_timeout: 20
     wait_for_service_timeout: 1000
     action_server_result_timeout: 900.0
@@ -70,8 +70,8 @@ bt_navigator:
 local_costmap:
   local_costmap:
     ros__parameters:
-      update_frequency: 5.0
-      publish_frequency: 1.0
+      update_frequency: 10.0
+      publish_frequency: 5.0
       global_frame: odom
       robot_base_frame: base_link
       rolling_window: true
@@ -90,9 +90,9 @@ local_costmap:
           max_obstacle_height: 2.0
           min_obstacle_height: 0.05
           obstacle_max_range: 2.5
-          obstacle_min_range: 0.0
+          obstacle_min_range: 0.6
           raytrace_max_range: 3.0
-          raytrace_min_range: 0.0
+          raytrace_min_range: 0.6
           clearing: True
           marking: True
         sonar_front_bumper_center:
@@ -170,7 +170,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.55
+        inflation_radius: 0.60
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: False
@@ -201,7 +201,7 @@ global_costmap:
   global_costmap:
     ros__parameters:
       update_frequency: 10.0
-      publish_frequency: 1.0
+      publish_frequency: 10.0
       global_frame: map
       robot_base_frame: base_link
       footprint: "[ [0.505, 0.31], [0.505, -0.31], [-0.505, -0.31], [-0.505, 0.31] ]"
@@ -219,9 +219,9 @@ global_costmap:
           max_obstacle_height: 2.0
           min_obstacle_height: 0.05
           obstacle_max_range: 3.0
-          obstacle_min_range: 0.0
+          obstacle_min_range: 0.6
           raytrace_max_range: 3.0
-          raytrace_min_range: 0.0
+          raytrace_min_range: 0.6
           clearing: True
           marking: True
         sonar_front_bumper_center:
@@ -301,8 +301,8 @@ global_costmap:
         map_subscribe_transient_local: True
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.4
+        cost_scaling_factor: 10.0
+        inflation_radius: 0.55
       always_send_full_costmap: True
 
 map_saver:
@@ -332,7 +332,7 @@ planner_server:
       analytic_expansion_max_length: 3.0  # For Hybrid/Lattice nodes: The maximum length of the analytic expansion to be considered valid to prevent unsafe shortcutting
       analytic_expansion_max_cost: 200.0  # The maximum single cost for any part of an analytic expansion to contain and be valid, except when necessary on approach to goal
       analytic_expansion_max_cost_override: false  #  Whether or not to override the maximum cost setting if within critical distance to goal (ie probably required)
-      minimum_turning_radius: 1.097       # minimum turning radius in m of path / vehicle; aligned with controller steering limit
+      minimum_turning_radius: 1.15        # practical planning radius in m; set slightly above the kinematic minimum to account for steering response lag in tight turns
       reverse_penalty: 2.0                # Penalty to apply if motion is reversing, must be => 1
       change_penalty: 0.0                 # Penalty to apply if motion is changing directions (L to R), must be >= 0
       non_straight_penalty: 1.2           # Penalty to apply if motion is non-straight, must be => 1
@@ -375,17 +375,17 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.4
-      yaw_goal_tolerance: 0.35            # ~20 degrees
+      xy_goal_tolerance: 0.2
+      yaw_goal_tolerance: 0.45            # ~26 degrees
 
     FollowPath:
       plugin: "nav2_pure_pursuit_controller::Nav2PurePursuitController"
-      v_max: 0.9
-      ld_min: 1.15
-      K_v_turn: 1.3
-      K_v_stop: -1.0
+      v_max: 1.0
+      d_lookahead_min: 1.0
+      K_v_turn: 1.5
+      K_v_stop: 1.0
       K_ld: 0.5
-      ld_goal: 0.75
+      d_goal_heading: 0.6
 
 behavior_server:
   ros__parameters:

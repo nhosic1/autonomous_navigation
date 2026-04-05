@@ -494,7 +494,7 @@ namespace sp
 
         // Load disparity-to-depth mapping matrix
         fs["Q"] >> Q;
-        Q.convertTo(T, CV_64F);
+        Q.convertTo(Q, CV_64F);
 
         fs.release();
     }
