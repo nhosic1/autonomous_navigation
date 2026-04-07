@@ -189,6 +189,13 @@ target_include_directories(wheel_odom_estimator PUBLIC
 target_compile_features(wheel_odom_estimator PUBLIC c_std_99 cxx_std_17)
 ament_target_dependencies(wheel_odom_estimator rclcpp std_msgs sensor_msgs nav_msgs tf2 tf2_geometry_msgs)
 
+add_executable(gazebo_odom_aligner src/localization/gazebo_odom_aligner.cpp)
+target_include_directories(gazebo_odom_aligner PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(gazebo_odom_aligner PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(gazebo_odom_aligner rclcpp std_msgs nav_msgs tf2 tf2_geometry_msgs)
+
 add_executable(joint_controller src/control/joint_controller.cpp)
 target_include_directories(joint_controller PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -266,6 +273,7 @@ install(TARGETS stereo_viewer DESTINATION lib/${PROJECT_NAME})
 install(TARGETS state_monitor DESTINATION lib/${PROJECT_NAME})
 install(TARGETS localization_initializer DESTINATION lib/${PROJECT_NAME})
 install(TARGETS wheel_odom_estimator DESTINATION lib/${PROJECT_NAME})
+install(TARGETS gazebo_odom_aligner DESTINATION lib/${PROJECT_NAME})
 install(TARGETS joint_controller DESTINATION lib/${PROJECT_NAME})
 install(TARGETS nav_cmd_gate DESTINATION lib/${PROJECT_NAME})
 install(TARGETS sensor_message_normalizer DESTINATION lib/${PROJECT_NAME})

@@ -128,20 +128,10 @@ private:
         tvec_guess_ = cv::Mat::zeros(3, 1, CV_64F);
     }
 
-    void publish_previous_odom()
-    {
-        if (!odom_msg_prev_.header.frame_id.empty())
-        {
-            odom_msg_prev_.header.stamp = this->get_clock()->now();
-            odom_publisher_->publish(odom_msg_prev_);
-        }
-    }
-
     void handle_visual_odometry_failure(const cv::Mat &left_img, const builtin_interfaces::msg::Time &timestamp)
     {
         save_failure_snapshots(left_img, timestamp);
         reset_motion_estimate_guess();
-        publish_previous_odom();
 
         bootstrap_complete_ = false;
     }
@@ -477,8 +467,7 @@ private:
                         return;
                 }
 
-                RCLCPP_WARN(this->get_logger(), "Visual odometry update rejected: estimated linear velocity exceeds the maximum expected value. Keeping the previous odometry estimate.");
-                publish_previous_odom();
+                RCLCPP_WARN(this->get_logger(), "Visual odometry update rejected: estimated linear velocity exceeds the maximum expected value. Skipping publication for this frame.");
                 return;
             }
 
@@ -493,10 +482,6 @@ private:
                 apply_visual_odometry_update(rvec, tvec, dt, odom_msg, global_pose);
                 update_reference_state(keypoints_L, descriptors_L, points_2D_stereo_filtered, points_3D_stereo_filtered, left_img, right_img, timestamp, odom_msg, global_pose);
             }
-            
-            // Publish the previous odometry message again
-            odom_msg_prev_.header.stamp = this->get_clock()->now();
-            odom_publisher_->publish(odom_msg_prev_);
         }
         else
         {

@@ -72,6 +72,13 @@ def generate_launch_description():
         parameters=[{"use_sim_time": sim}],
     )
 
+    gazebo_odom_aligner = Node(
+        package=package_name,
+        executable="gazebo_odom_aligner",
+        output="screen",
+        parameters=[{"use_sim_time": sim}],
+    )
+
     return LaunchDescription(
         [
             sim_arg,
@@ -85,6 +92,7 @@ def generate_launch_description():
                     visual_odom_estimator,
                     ekf_node,
                     localization_initializer,
+                    gazebo_odom_aligner,
                 ],
             ),
         ]
