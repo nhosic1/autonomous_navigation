@@ -76,21 +76,24 @@ private:
         std::cout << "Received joint state: " << std::endl;
         std::cout << "v_L: " << v_L << ", v_R: " << v_R << ", v: " << v << std::endl;
 
+        const double delta_L = positions[fl_steer];
+        const double delta_R = positions[fr_steer];
+
         double R;
 
         // Compute turning radius of rear axle midpoint
-        if (std::abs(positions[fl_steer]) < 1e-6 || std::abs(positions[fr_steer]) < 1e-6)
+        if (std::abs(delta_L) < 1e-6 && std::abs(delta_R) < 1e-6)
         {
             R = std::numeric_limits<double>::infinity();
         }
         else
         {
-            double R_L_kingpin = WHEEL_BASE / std::tan(positions[fl_steer]);
-            double R_R_kingpin = WHEEL_BASE / std::tan(positions[fr_steer]);
-            R = (R_L_kingpin + R_R_kingpin) / 2.0;
+            double R_L = WHEEL_BASE / std::tan(delta_L);
+            double R_R = WHEEL_BASE / std::tan(delta_R);
+            R = (R_L + R_R) / 2.0;
 
-            std::cout << "fl_steer: " << positions[fl_steer] << ", fr_steer: " << positions[fr_steer] << std::endl;
-            std::cout << "R_L_kingpin: " << R_L_kingpin << ", R_R_kingpin: " << R_R_kingpin << ", R: " << R << std::endl;
+            std::cout << "delta_L: " << delta_L << ", delta_R: " << delta_R << std::endl;
+            std::cout << "R_L: " << R_L << ", R_R: " << R_R << ", R: " << R << std::endl;
         }
 
         // Angular velocity of rear axle midpoint
