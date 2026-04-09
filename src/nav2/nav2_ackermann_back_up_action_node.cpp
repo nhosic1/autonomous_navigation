@@ -1,6 +1,6 @@
 #include "autonomous_navigation/nav2/nav2_ackermann_back_up_action_node.hpp"
 
-#include <behaviortree_cpp_v3/bt_factory.h>
+#include <behaviortree_cpp/bt_factory.h>
 #include <rclcpp/duration.hpp>
 
 namespace autonomous_navigation

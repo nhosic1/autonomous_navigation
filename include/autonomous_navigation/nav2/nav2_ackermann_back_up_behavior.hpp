@@ -8,6 +8,7 @@
 #include "autonomous_navigation/action/ackermann_back_up.hpp"
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <nav2_behaviors/timed_behavior.hpp>
 
 namespace autonomous_navigation
@@ -70,6 +71,7 @@ private:
   double max_reverse_heading_change_rad_{0.0};
   double min_reverse_heading_change_rad_{0.0};
   rclcpp::Duration command_time_allowance_{0, 0};
+  rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
   rclcpp::Time end_time_{0, 0, RCL_STEADY_TIME};
 };
 

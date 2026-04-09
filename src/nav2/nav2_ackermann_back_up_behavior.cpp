@@ -45,7 +45,7 @@ AckermannBackUp::onRun(const std::shared_ptr<const ActionT::Goal> command)
   }
 
   command_time_allowance_ = command->time_allowance;
-  end_time_ = this->steady_clock_.now() + command_time_allowance_;
+  end_time_ = steady_clock_.now() + command_time_allowance_;
   const auto selected_side = selectReverseSide(current_pose, command->goal_pose);
   if (!selected_side.has_value()) {
     this->stopRobot();
@@ -68,7 +68,7 @@ AckermannBackUp::onRun(const std::shared_ptr<const ActionT::Goal> command)
 
 AckermannBackUp::ResultStatus AckermannBackUp::onCycleUpdate()
 {
-  const rclcpp::Time now = this->steady_clock_.now();
+  const rclcpp::Time now = steady_clock_.now();
   const rclcpp::Duration time_remaining = end_time_ - now;
 
   geometry_msgs::msg::PoseStamped current_pose;
@@ -144,7 +144,10 @@ AckermannBackUp::ResultStatus AckermannBackUp::onCycleUpdate()
     return ResultStatus{Status::FAILED, ActionT::Goal::COLLISION_AHEAD};
   }
 
-  this->vel_pub_->publish(cmd_vel);
+  auto cmd_vel_stamped = std::make_unique<geometry_msgs::msg::TwistStamped>();
+  cmd_vel_stamped->header.stamp = this->node_.lock()->now();
+  cmd_vel_stamped->twist = cmd_vel;
+  this->vel_pub_->publish(std::move(cmd_vel_stamped));
   return ResultStatus{Status::RUNNING, ActionT::Goal::NONE};
 }
 
