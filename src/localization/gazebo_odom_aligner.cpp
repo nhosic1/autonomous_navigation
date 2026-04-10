@@ -16,13 +16,6 @@ public:
             "/autonomous_vehicle/odometry/gazebo", 10,
             std::bind(&GazeboOdomAligner::gazebo_odom_callback, this, std::placeholders::_1));
 
-        filtered_odom_subscription_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "/odometry/filtered", 10,
-            [this](const nav_msgs::msg::Odometry::ConstSharedPtr &msg)
-            {
-                latest_filtered_odom_ = msg;
-            });
-
         reset_odom_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
             "/reset_odom", 1,
             [this](const std_msgs::msg::Bool::SharedPtr msg)
@@ -55,19 +48,10 @@ private:
 
     void initialize_alignment(const nav_msgs::msg::Odometry::ConstSharedPtr &gazebo_odom)
     {
-        if (!latest_filtered_odom_)
-        {
-            RCLCPP_WARN_THROTTLE(
-                this->get_logger(), *this->get_clock(), 2000,
-                "Waiting for /odometry/filtered before aligning Gazebo odometry.");
-            return;
-        }
-
-        const tf2::Transform T_odom_base = pose_to_transform(latest_filtered_odom_->pose.pose);
         const tf2::Transform T_sim_odom_base = pose_to_transform(gazebo_odom->pose.pose);
-
-        // T_odom_sim_odom aligns Gazebo ground truth from sim_odom into the local odom frame.
-        alignment_transform_ = T_odom_base * T_sim_odom_base.inverse();
+        // After a reset, base_link is assumed to be at the identity pose in odom.
+        // Therefore T_odom_sim_odom = T_odom_base * T_sim_odom_base^-1 = I * T_sim_odom_base^-1.
+        alignment_transform_ = T_sim_odom_base.inverse();
         alignment_initialized_ = true;
 
         RCLCPP_INFO(this->get_logger(), "Gazebo odometry alignment initialized.");
@@ -117,10 +101,8 @@ private:
 
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr aligned_odom_publisher_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr gazebo_odom_subscription_;
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr filtered_odom_subscription_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr reset_odom_subscription_;
 
-    nav_msgs::msg::Odometry::ConstSharedPtr latest_filtered_odom_;
     tf2::Transform alignment_transform_;
     bool alignment_initialized_ = false;
 };

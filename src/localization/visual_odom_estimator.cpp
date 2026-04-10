@@ -474,12 +474,13 @@ private:
             rvec_guess_ = rvec;
             tvec_guess_ = tvec;
 
+            nav_msgs::msg::Odometry odom_msg;
+            tf2::Transform global_pose;
+            apply_visual_odometry_update(rvec, tvec, dt, odom_msg, global_pose);
+
             // Keyframe slection
             if ((((t_norm / average_depth) > 0.07 || r_norm > 5 * CV_PI / 180)) && t_norm > 0.05)
             {
-                nav_msgs::msg::Odometry odom_msg;
-                tf2::Transform global_pose;
-                apply_visual_odometry_update(rvec, tvec, dt, odom_msg, global_pose);
                 update_reference_state(keypoints_L, descriptors_L, points_2D_stereo_filtered, points_3D_stereo_filtered, left_img, right_img, timestamp, odom_msg, global_pose);
             }
         }

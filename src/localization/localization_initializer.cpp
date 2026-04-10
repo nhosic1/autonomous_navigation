@@ -76,20 +76,6 @@ private:
     {
         RCLCPP_INFO(this->get_logger(), "Initial pose received, resetting EKF and odometry.");
 
-        // Publish to /reset_odom to reset visual odometry
-        std_msgs::msg::Bool reset_odom_msg;
-        reset_odom_msg.data = true;
-        reset_odom_pub_->publish(reset_odom_msg);
-
-        // Ensure the reset message is processed
-        rclcpp::sleep_for(500ms);
-
-        // Publish to /set_pose to reset robot_localization
-        geometry_msgs::msg::PoseWithCovarianceStamped set_pose_msg;
-        set_pose_msg.header.stamp = this->get_clock()->now();
-        set_pose_msg.header.frame_id = "odom";
-        set_pose_pub_->publish(set_pose_msg);
-
         tf2::Quaternion q;
 
         if (imu_received_) {
@@ -113,14 +99,38 @@ private:
 
             RCLCPP_WARN(this->get_logger(), "IMU data not received. Using orientation from manually set initial pose.");
         }
+
         current_map_to_odom_tf_.transform.translation.x = msg->pose.pose.position.x;
         current_map_to_odom_tf_.transform.translation.y = msg->pose.pose.position.y;
         current_map_to_odom_tf_.transform.translation.z = CHASSIS_HEIGHT;
         current_map_to_odom_tf_.transform.rotation = tf2::toMsg(q);
 
-        // Publish the updated transform immediately so costmap clearing uses the new pose.
+        // Publish the updated transform so the local odom frame is placed correctly in the map frame.
         publish_map_to_odom_tf();
-        rclcpp::sleep_for(200ms);
+        // rclcpp::sleep_for(200ms);
+
+        // Reset wheel/visual odometry so they restart from a fresh local odom state.
+        std_msgs::msg::Bool reset_odom_msg;
+        reset_odom_msg.data = true;
+        reset_odom_pub_->publish(reset_odom_msg);
+        rclcpp::sleep_for(500ms);
+
+        // Reset robot_localization to the identity pose in odom.
+        geometry_msgs::msg::PoseWithCovarianceStamped set_pose_msg;
+        set_pose_msg.header.stamp = this->get_clock()->now();
+        set_pose_msg.header.frame_id = "odom";
+        set_pose_msg.pose.pose.position.x = 0.0;
+        set_pose_msg.pose.pose.position.y = 0.0;
+        set_pose_msg.pose.pose.position.z = 0.0;
+        set_pose_msg.pose.pose.orientation.w = 1.0;
+        set_pose_msg.pose.covariance = {
+            0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.01};
+        set_pose_pub_->publish(set_pose_msg);
 
         clear_costmap(clear_local_costmap_client_);
         clear_costmap(clear_global_costmap_client_);
