@@ -1006,8 +1006,8 @@
 
   <gazebo>
     <plugin
-      filename="libignition-gazebo-joint-state-publisher-system.so"
-      name="ignition::gazebo::systems::JointStatePublisher">
+      filename="gz-sim-joint-state-publisher-system"
+      name="gz::sim::systems::JointStatePublisher">
       <joint_name>front_left_wheel_steering_joint</joint_name>
       <joint_name>front_right_wheel_steering_joint</joint_name>
       <joint_name>front_left_wheel_joint</joint_name>
@@ -1019,8 +1019,8 @@
 
   <gazebo>
     <plugin
-      filename="libignition-gazebo-joint-position-controller-system.so"
-      name="ignition::gazebo::systems::JointPositionController">
+      filename="gz-sim-joint-position-controller-system"
+      name="gz::sim::systems::JointPositionController">
       <joint_name>front_left_wheel_steering_joint</joint_name>
       <p_gain>3</p_gain>
       <i_gain>0.1</i_gain>
@@ -1030,8 +1030,8 @@
 
   <gazebo>
     <plugin
-      filename="libignition-gazebo-joint-position-controller-system.so"
-      name="ignition::gazebo::systems::JointPositionController">
+      filename="gz-sim-joint-position-controller-system"
+      name="gz::sim::systems::JointPositionController">
       <joint_name>front_right_wheel_steering_joint</joint_name>
       <p_gain>3</p_gain>
       <i_gain>0.1</i_gain>
@@ -1041,24 +1041,24 @@
 
   <gazebo>
     <plugin
-      filename="libignition-gazebo-joint-controller-system.so"
-      name="ignition::gazebo::systems::JointController">
+      filename="gz-sim-joint-controller-system"
+      name="gz::sim::systems::JointController">
       <joint_name>rear_left_wheel_joint</joint_name>
     </plugin>
   </gazebo>
 
   <gazebo>
     <plugin
-      filename="libignition-gazebo-joint-controller-system.so"
-      name="ignition::gazebo::systems::JointController">
+      filename="gz-sim-joint-controller-system"
+      name="gz::sim::systems::JointController">
       <joint_name>rear_right_wheel_joint</joint_name>
     </plugin>
   </gazebo>
 
   <gazebo>
     <plugin
-      filename="libignition-gazebo-odometry-publisher-system.so"
-      name="ignition::gazebo::systems::OdometryPublisher">
+      filename="gz-sim-odometry-publisher-system"
+      name="gz::sim::systems::OdometryPublisher">
       <xyz_offset>-0.3 0 0 0 0 0</xyz_offset>
       <odom_publish_frequency>15</odom_publish_frequency>
       <robot_base_frame>rear_axle</robot_base_frame>

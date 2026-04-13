@@ -1,119 +1,119 @@
 - ros_topic_name: "/autonomous_vehicle/cmd_vel"
   gz_topic_name: "/model/autonomous_vehicle/cmd_vel"
   ros_type_name: "geometry_msgs/msg/Twist"
-  gz_type_name: "ignition.msgs.Twist"
+  gz_type_name: "gz.msgs.Twist"
   direction: ROS_TO_GZ
 
 - ros_topic_name: "/autonomous_vehicle/left_camera/image"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/left_camera/image"
   ros_type_name: "sensor_msgs/msg/Image"
-  gz_type_name: "ignition.msgs.Image"
+  gz_type_name: "gz.msgs.Image"
   direction: GZ_TO_ROS
   
 - ros_topic_name: "/autonomous_vehicle/right_camera/image"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/right_camera/image"
   ros_type_name: "sensor_msgs/msg/Image"
-  gz_type_name: "ignition.msgs.Image"
+  gz_type_name: "gz.msgs.Image"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_front_bumper_center/scan"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_front_bumper_center/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
-  gz_type_name: "ignition.msgs.LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_front_bumper_left/scan"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_front_bumper_left/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
-  gz_type_name: "ignition.msgs.LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_front_bumper_right/scan"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_front_bumper_right/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
-  gz_type_name: "ignition.msgs.LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_left_side_bumper/scan"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_left_side_bumper/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
-  gz_type_name: "ignition.msgs.LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_right_side_bumper/scan"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_right_side_bumper/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
-  gz_type_name: "ignition.msgs.LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_rear_bumper_center/scan"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_rear_bumper_center/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
-  gz_type_name: "ignition.msgs.LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_rear_bumper_left/scan"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_rear_bumper_left/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
-  gz_type_name: "ignition.msgs.LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_rear_bumper_right/scan"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_rear_bumper_right/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
-  gz_type_name: "ignition.msgs.LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/autonomous_vehicle/front_left_wheel_steering_joint/cmd_pos"
   gz_topic_name: "/model/autonomous_vehicle/joint/front_left_wheel_steering_joint/0/cmd_pos"
   ros_type_name: "std_msgs/msg/Float64"
-  gz_type_name: "ignition.msgs.Double"
+  gz_type_name: "gz.msgs.Double"
   direction: ROS_TO_GZ
 
 - ros_topic_name: "/autonomous_vehicle/front_right_wheel_steering_joint/cmd_pos"
   gz_topic_name: "/model/autonomous_vehicle/joint/front_right_wheel_steering_joint/0/cmd_pos"
   ros_type_name: "std_msgs/msg/Float64"
-  gz_type_name: "ignition.msgs.Double"
+  gz_type_name: "gz.msgs.Double"
   direction: ROS_TO_GZ
 
 - ros_topic_name: "/autonomous_vehicle/rear_left_wheel_joint/cmd_vel"
   gz_topic_name: "/model/autonomous_vehicle/joint/rear_left_wheel_joint/cmd_vel"
   ros_type_name: "std_msgs/msg/Float64"
-  gz_type_name: "ignition.msgs.Double"
+  gz_type_name: "gz.msgs.Double"
   direction: ROS_TO_GZ
 
 - ros_topic_name: "/autonomous_vehicle/rear_right_wheel_joint/cmd_vel"
   gz_topic_name: "/model/autonomous_vehicle/joint/rear_right_wheel_joint/cmd_vel"
   ros_type_name: "std_msgs/msg/Float64"
-  gz_type_name: "ignition.msgs.Double"
+  gz_type_name: "gz.msgs.Double"
   direction: ROS_TO_GZ
 
 - ros_topic_name: "/joint_states"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/joint_state"
   ros_type_name: "sensor_msgs/msg/JointState"
-  gz_type_name: "ignition.msgs.Model"
+  gz_type_name: "gz.msgs.Model"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/imu_sensor/imu"
   gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/imu_sensor/imu"
   ros_type_name: "sensor_msgs/msg/Imu"
-  gz_type_name: "ignition.msgs.IMU"
+  gz_type_name: "gz.msgs.IMU"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/autonomous_vehicle/odometry/gazebo"
   gz_topic_name: "/model/autonomous_vehicle/odometry"
   ros_type_name: "nav_msgs/msg/Odometry"
-  gz_type_name: "ignition.msgs.Odometry"
+  gz_type_name: "gz.msgs.Odometry"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/clock"
   gz_topic_name: "/clock"
   ros_type_name: "rosgraph_msgs/msg/Clock"
-  gz_type_name: "ignition.msgs.Clock"
+  gz_type_name: "gz.msgs.Clock"
   direction: GZ_TO_ROS
 
 # - ros_topic_name: "/autonomous_vehicle/odometry/ackermann"
 #   gz_topic_name: "/model/autonomous_vehicle/odometry/ackermann"
 #   ros_type_name: "nav_msgs/msg/Odometry"
-#   gz_type_name: "ignition.msgs.Odometry"
+#   gz_type_name: "gz.msgs.Odometry"
 #   direction: GZ_TO_ROS
