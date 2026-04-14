@@ -310,7 +310,7 @@ controller_server:
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.3
-    enable_stamped_cmd_vel: true
+    enable_stamped_cmd_vel: false
     progress_checker_plugins: ["progress_checker"]
     goal_checker_plugins: ["general_goal_checker"]
     controller_plugins: ["FollowPath"]
@@ -343,6 +343,7 @@ behavior_server:
     local_footprint_topic: local_costmap/published_footprint
     global_footprint_topic: global_costmap/published_footprint
     cycle_frequency: 10.0
+    enable_stamped_cmd_vel: false
     behavior_plugins: ["backup", "drive_on_heading", "ackermann_backup", "assisted_teleop", "wait"]
     backup:
       plugin: "nav2_behaviors::BackUp"
