@@ -6,3 +6,4 @@ docs/source/apidoc/
 test
 src/perception/testing.cpp
 __pycache__
+.codex
