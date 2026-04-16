@@ -1,0 +1,19 @@
+{
+	"sphinx directive": {
+        "prefix": "req",
+        "body": [
+            ".. req:: label",
+            "   :id: REQ_$CURRENT_SECONDS_UNIX",
+            "   :status:",
+            // "   :date-released:",
+            // "   :priority: Low",
+            // "   :submitted-by: Nedim Hosic",
+            // "   :modified-by:",
+            // "   :category:",
+            // "   :safety-asil:",
+            // "   :references:",
+            // "   :verification-and-validation:",
+        ],
+        "description": "Requirement sphinx directive"
+    }
+}
