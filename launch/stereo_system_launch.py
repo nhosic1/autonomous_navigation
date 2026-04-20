@@ -1,43 +1,42 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
+LEFT_CAMERA_ID = 1
+RIGHT_CAMERA_ID = 0
+JPEG_QUALITY = 50
+
+
+def create_camera_node(side, camera_id):
+    node_name = f"{side}_frame_publisher"
+    camera_namespace = f"camera_{camera_id}"
+
+    return Node(
+        package="autonomous_navigation",
+        executable="frame_publisher",
+        name=node_name,
+        parameters=[
+            {"camera_id": camera_id},
+            {
+                f"{node_name}.{camera_namespace}.image.compressed.jpeg_quality": JPEG_QUALITY
+            },
+        ],
+        remappings=[
+            (
+                f"/{node_name}/{camera_namespace}/image",
+                f"/autonomous_vehicle/{side}_camera/image",
+            ),
+            (
+                f"/{node_name}/{camera_namespace}/image/compressed",
+                f"/{side}_camera/image/compressed",
+            ),
+        ],
+    )
+
 
 def generate_launch_description():
     return LaunchDescription(
         [
-            Node(
-                package="autonomous_navigation",
-                executable="frame_publisher",
-                name="left_frame_publisher",
-                parameters=[
-                    {"camera_id": 0},
-                    {"left_frame_publisher.camera_0.image.compressed.jpeg_quality": 50},
-                ],
-                remappings=[
-                    ("/left_frame_publisher/camera_0/image", "/autonomous_vehicle/left_camera/image"),
-                    (
-                        "/left_frame_publisher/camera_0/image/compressed",
-                        "/left_camera/image/compressed",
-                    ),
-                ],
-            ),
-            Node(
-                package="autonomous_navigation",
-                executable="frame_publisher",
-                name="right_frame_publisher",
-                parameters=[
-                    {"camera_id": 1},
-                    {
-                        "right_frame_publisher.camera_1.image.compressed.jpeg_quality": 50
-                    },
-                ],
-                remappings=[
-                    ("/right_frame_publisher/camera_1/image", "/autonomous_vehicle/right_camera/image"),
-                    (
-                        "/right_frame_publisher/camera_1/image/compressed",
-                        "/right_camera/image/compressed",
-                    ),
-                ],
-            ),
+            create_camera_node("left", LEFT_CAMERA_ID),
+            create_camera_node("right", RIGHT_CAMERA_ID),
         ]
     )

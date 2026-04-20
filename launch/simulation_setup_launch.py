@@ -1,5 +1,6 @@
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
@@ -9,9 +10,9 @@ import os
 def generate_launch_description():
     package_name = "autonomous_navigation"
     package_share_dir = get_package_share_directory(package_name)
+    ros_gz_sim_share_dir = get_package_share_directory("ros_gz_sim")
     config_path = os.path.join(package_share_dir, "config", "ros_gz_bridge_config.yaml")
     model_path = os.path.join(package_share_dir, "models", "autonomous_vehicle", "model.urdf")
-    # model_path = os.path.join(package_share_dir, "models", "ackermann")
     world_path = os.path.join(
         package_share_dir, "worlds", "warehouse_world.sdf"
     )
@@ -23,8 +24,13 @@ def generate_launch_description():
         description="Absolute path to a world file to open",
     )
 
-    ignition_gazebo_process = ExecuteProcess(
-        cmd=["ign", "gazebo", world], output="screen"
+    gazebo_sim = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(ros_gz_sim_share_dir, "launch", "gz_sim.launch.py")
+        ),
+        launch_arguments=[
+            ("gz_args", world),
+        ],
     )
 
     sensor_message_normalizer = Node(
@@ -38,12 +44,11 @@ def generate_launch_description():
     return LaunchDescription(
         [
             world_arg,
-            ignition_gazebo_process,
+            gazebo_sim,
             Node(
                 package="ros_gz_sim",
                 executable="create",
                 arguments=["-file", model_path, "-x", "0.3", "-z", "0.15"],
-                # arguments=["-file", model_path, "-z", "0.325"],
             ),
             Node(
                 package="ros_gz_bridge",

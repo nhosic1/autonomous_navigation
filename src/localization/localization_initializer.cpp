@@ -47,6 +47,8 @@ public:
     }
 
 private:
+    static constexpr double kTransformTimeOffsetSeconds = 0.05;
+
     void initialize_map_to_odom_tf()
     {
         current_map_to_odom_tf_.header.frame_id = "map";
@@ -62,7 +64,9 @@ private:
 
     void publish_map_to_odom_tf()
     {
-        current_map_to_odom_tf_.header.stamp = this->get_clock()->now();
+        current_map_to_odom_tf_.header.stamp =
+            this->get_clock()->now() +
+            rclcpp::Duration::from_seconds(kTransformTimeOffsetSeconds);
         tf_broadcaster_->sendTransform(current_map_to_odom_tf_);
     }
 
