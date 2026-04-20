@@ -1059,7 +1059,7 @@
     <plugin
       filename="gz-sim-odometry-publisher-system"
       name="gz::sim::systems::OdometryPublisher">
-      <xyz_offset>0.0 0 0 0 0 0</xyz_offset>
+      <xyz_offset>0 0 0 0 0 0</xyz_offset>
       <odom_publish_frequency>15</odom_publish_frequency>
       <robot_base_frame>base_link</robot_base_frame>
       <odom_frame>sim_odom</odom_frame>
