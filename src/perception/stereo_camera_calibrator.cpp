@@ -73,8 +73,8 @@ int main(int argc, char **argv)
     }
 
     std::vector<cv::String> image_paths_L, image_paths_R;
-    std::string pattern_L = images_dir_L + "/*.jpg";
-    std::string pattern_R = images_dir_R + "/*.jpg";
+    std::string pattern_L = images_dir_L + "/*.png";
+    std::string pattern_R = images_dir_R + "/*.png";
 
     // Get paths to images
     cv::glob(pattern_L, image_paths_L);
@@ -154,10 +154,10 @@ int main(int argc, char **argv)
     RCLCPP_INFO(node->get_logger(), "Calibrating...");
 
     // Calibrate cameras
-    cv::calibrateCamera(all_corners_3D, all_corners_2D_L, cv::Size(image_gray_L.rows, image_gray_L.cols), camera_matrix_L, dist_coeffs_L, R_L, T_L);
+    cv::calibrateCamera(all_corners_3D, all_corners_2D_L, image_gray_L.size(), camera_matrix_L, dist_coeffs_L, R_L, T_L);
     opt_camera_matrix_L = cv::getOptimalNewCameraMatrix(camera_matrix_L, dist_coeffs_L, image_gray_L.size(), 1, image_gray_L.size(), 0);
 
-    cv::calibrateCamera(all_corners_3D, all_corners_2D_R, cv::Size(image_gray_R.rows, image_gray_R.cols), camera_matrix_R, dist_coeffs_R, R_R, T_R);
+    cv::calibrateCamera(all_corners_3D, all_corners_2D_R, image_gray_R.size(), camera_matrix_R, dist_coeffs_R, R_R, T_R);
     opt_camera_matrix_R = cv::getOptimalNewCameraMatrix(camera_matrix_R, dist_coeffs_R, image_gray_R.size(), 1, image_gray_R.size(), 0);
 
     // Compute re-projection error
