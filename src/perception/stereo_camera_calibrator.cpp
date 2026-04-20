@@ -18,6 +18,9 @@ int main(int argc, char **argv)
     node->declare_parameter<std::vector<int64_t>>("inner_corners", std::vector<int64_t>{});
     std::vector<int64_t> inner_corners = node->get_parameter("inner_corners").as_integer_array();
 
+    node->declare_parameter<double>("square_size", 0.021);
+    double square_size = node->get_parameter("square_size").as_double();
+
     node->declare_parameter<std::string>("output_folder", "");
     std::string output_dir = node->get_parameter("output_folder").as_string();
 
@@ -36,6 +39,12 @@ int main(int argc, char **argv)
     if (inner_corners.size() != 2 || inner_corners[0] <= 0 || inner_corners[1] <= 0)
     {
         RCLCPP_ERROR(node->get_logger(), "Parameter 'inner_corners' is invalid or not provided. It must be a pair of values > 0.");
+        parameter_error = true;
+    }
+
+    if (square_size <= 0.0)
+    {
+        RCLCPP_ERROR(node->get_logger(), "Parameter 'square_size' is invalid. It must be > 0 and specified in meters.");
         parameter_error = true;
     }
 
@@ -65,7 +74,7 @@ int main(int argc, char **argv)
 
     // 3D coordinates of chessboard corners (single image)
     std::vector<cv::Point3f> corners_3D;
-    float d = 0.021; // distance between corners in [m]
+    float d = static_cast<float>(square_size); // distance between corners in [m]
     for (int i = 0; i < inner_corners_h; i++)
     {
         for (int j = 0; j < inner_corners_v; j++)
