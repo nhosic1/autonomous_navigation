@@ -48,7 +48,7 @@ endif()
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 add_library(nav2_pure_pursuit_controller SHARED src/nav2/nav2_pure_pursuit_controller.cpp)
-target_link_libraries(nav2_pure_pursuit_controller pure_pursuit pid_controller)
+target_link_libraries(nav2_pure_pursuit_controller pure_pursuit)
 target_include_directories(nav2_pure_pursuit_controller PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
@@ -111,6 +111,7 @@ add_library(pid_controller SHARED src/control/pid_controller.cpp)
 target_include_directories(pid_controller PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
+target_link_libraries(pure_pursuit PUBLIC pid_controller)
 
 # add_executable(obstacle_detector src/perception/obstacle_detector.cpp)
 # target_link_libraries(obstacle_detector stereo_processing ${PCL_LIBRARIES})
@@ -158,7 +159,7 @@ ament_target_dependencies(state_monitor rclcpp std_msgs sensor_msgs cv_bridge Op
 
 if (NOT BUILD_RPI)
   add_executable(path_follower src/control/path_follower.cpp)
-  target_link_libraries(path_follower pure_pursuit pid_controller)
+  target_link_libraries(path_follower pure_pursuit)
   target_include_directories(path_follower PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
