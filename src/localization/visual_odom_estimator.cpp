@@ -58,7 +58,7 @@ public:
 
         // Create publishers
         odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>("/autonomous_vehicle/odometry/visual", 10);
-        point_cloud_publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/autonomous_vehicle/stereo/pointcloud", 10);
+        point_cloud_publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/autonomous_vehicle/stereo/pointcloud", rclcpp::SensorDataQoS());
 
         ekf_odom_subscription_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/odometry/filtered", 10,
