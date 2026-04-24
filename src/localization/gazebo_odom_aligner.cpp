@@ -1,5 +1,4 @@
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/bool.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -15,17 +14,6 @@ public:
         gazebo_odom_subscription_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/autonomous_vehicle/odometry/gazebo", 10,
             std::bind(&GazeboOdomAligner::gazebo_odom_callback, this, std::placeholders::_1));
-
-        reset_odom_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
-            "/reset_odom", 1,
-            [this](const std_msgs::msg::Bool::SharedPtr msg)
-            {
-                if (msg->data)
-                {
-                    alignment_initialized_ = false;
-                    RCLCPP_INFO(this->get_logger(), "Reset received. Gazebo odometry alignment will be recomputed.");
-                }
-            });
     }
 
 private:
@@ -48,10 +36,17 @@ private:
 
     void initialize_alignment(const nav_msgs::msg::Odometry::ConstSharedPtr &gazebo_odom)
     {
-        const tf2::Transform T_sim_odom_base = pose_to_transform(gazebo_odom->pose.pose);
-        // After a reset, base_link is assumed to be at the identity pose in odom.
-        // Therefore T_odom_sim_odom = T_odom_base * T_sim_odom_base^-1 = I * T_sim_odom_base^-1.
-        alignment_transform_ = T_sim_odom_base.inverse();
+        const tf2::Transform T_sim_odom_base_link = pose_to_transform(gazebo_odom->pose.pose);
+        const tf2::Vector3 initial_position = T_sim_odom_base_link.getOrigin();
+
+        tf2::Quaternion aligned_rotation;
+        aligned_rotation.setRPY(0.0, 0.0, 0.0);
+
+        tf2::Transform T_odom_base_link_initial;
+        T_odom_base_link_initial.setOrigin(tf2::Vector3(0.0, 0.0, initial_position.z()));
+        T_odom_base_link_initial.setRotation(aligned_rotation);
+
+        T_odom_sim_odom_ = T_odom_base_link_initial * T_sim_odom_base_link.inverse();
         alignment_initialized_ = true;
 
         RCLCPP_INFO(this->get_logger(), "Gazebo odometry alignment initialized.");
@@ -72,11 +67,11 @@ private:
         nav_msgs::msg::Odometry aligned_odom = *msg;
         aligned_odom.header.frame_id = "odom";
 
-        const tf2::Transform T_sim_odom_base = pose_to_transform(msg->pose.pose);
-        const tf2::Transform T_odom_base = alignment_transform_ * T_sim_odom_base;
-        aligned_odom.pose.pose = transform_to_pose(T_odom_base);
+        const tf2::Transform T_sim_odom_base_link = pose_to_transform(msg->pose.pose);
+        const tf2::Transform T_odom_base_link = T_odom_sim_odom_ * T_sim_odom_base_link;
+        aligned_odom.pose.pose = transform_to_pose(T_odom_base_link);
 
-        const tf2::Quaternion rotation = alignment_transform_.getRotation();
+        const tf2::Quaternion rotation = T_odom_sim_odom_.getRotation();
         tf2::Vector3 linear_twist(
             msg->twist.twist.linear.x,
             msg->twist.twist.linear.y,
@@ -101,9 +96,8 @@ private:
 
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr aligned_odom_publisher_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr gazebo_odom_subscription_;
-    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr reset_odom_subscription_;
 
-    tf2::Transform alignment_transform_;
+    tf2::Transform T_odom_sim_odom_;
     bool alignment_initialized_ = false;
 };
 

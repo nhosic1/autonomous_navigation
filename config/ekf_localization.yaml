@@ -11,17 +11,17 @@ ekf_filter_node:
     base_link_frame: base_link
     world_frame: odom
 
-    # imu0: /autonomous_vehicle/imu_sensor/imu
-    # imu0_config: [false, false, false,     # x, y, z
-    #               false, false, true,      # roll, pitch, yaw
-    #               false, false, false,     # vx, vy, vz
-    #               false, false, true,      # vroll, vpitch, vyaw
-    #               false, false, false]     # ax, ay, az
+    imu0: /autonomous_vehicle/imu_sensor/imu
+    imu0_config: [false, false, false,     # x, y, z
+                  false, false, true,      # roll, pitch, yaw
+                  false, false, false,     # vx, vy, vz
+                  false, false, true,      # vroll, vpitch, vyaw
+                  false, false, false]     # ax, ay, az
  
-    # imu0_differential: false
-    # imu0_remove_gravitational_acceleration: true
-    # imu0_queue_size: 10
-    # imu0_relative: true
+    imu0_differential: false
+    imu0_remove_gravitational_acceleration: true
+    imu0_queue_size: 10
+    imu0_relative: true
 
     odom0: /autonomous_vehicle/odometry/visual
     odom0_config: [true,  true, false,
@@ -34,13 +34,11 @@ ekf_filter_node:
     odom0_queue_size: 2
     odom0_relative: true
 
-    odom1: /autonomous_vehicle/odometry/wheel
-    odom1_config: [false, false, false,
-                   false, false, false,
-                   true, true, false,
-                   false, false, true,
-                   false, false, false]
+    twist0: /autonomous_vehicle/twist/wheel
+    twist0_config: [false, false, false,
+                    false, false, false,
+                    true, true, false,
+                    false, false, true,
+                    false, false, false]
 
-    odom1_differential: false
-    odom1_queue_size: 2
-    odom1_relative: true
+    twist0_queue_size: 2

@@ -127,7 +127,7 @@ target_include_directories(visual_odom_estimator PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(visual_odom_estimator PUBLIC c_std_99 cxx_std_17)
-ament_target_dependencies(visual_odom_estimator rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV ament_index_cpp image_transport tf2 tf2_geometry_msgs pcl_conversions)
+ament_target_dependencies(visual_odom_estimator rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV ament_index_cpp image_transport tf2 tf2_geometry_msgs tf2_ros pcl_conversions)
 
 if(BUILD_RPI)
   add_executable(frame_publisher src/localization/frame_publisher.cpp)
@@ -187,14 +187,14 @@ target_include_directories(wheel_odom_estimator PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(wheel_odom_estimator PUBLIC c_std_99 cxx_std_17)
-ament_target_dependencies(wheel_odom_estimator rclcpp std_msgs sensor_msgs nav_msgs tf2 tf2_geometry_msgs)
+ament_target_dependencies(wheel_odom_estimator rclcpp sensor_msgs nav_msgs tf2 tf2_geometry_msgs tf2_ros)
 
 add_executable(gazebo_odom_aligner src/localization/gazebo_odom_aligner.cpp)
 target_include_directories(gazebo_odom_aligner PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(gazebo_odom_aligner PUBLIC c_std_99 cxx_std_17)
-ament_target_dependencies(gazebo_odom_aligner rclcpp std_msgs nav_msgs tf2 tf2_geometry_msgs)
+ament_target_dependencies(gazebo_odom_aligner rclcpp nav_msgs tf2 tf2_geometry_msgs)
 
 add_executable(joint_controller src/control/joint_controller.cpp)
 target_include_directories(joint_controller PUBLIC

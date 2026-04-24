@@ -1,6 +1,6 @@
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, TimerAction
+from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -39,13 +39,6 @@ def generate_launch_description():
         output="screen",
     )
 
-    joint_state_publisher = Node(
-        package="joint_state_publisher",
-        executable="joint_state_publisher",
-        arguments=[model_path],
-        parameters=[{"use_sim_time": sim}],
-    )
-
     wheel_odom_estimator = Node(
         package=package_name,
         executable="wheel_odom_estimator",
@@ -56,6 +49,13 @@ def generate_launch_description():
         package=package_name,
         executable="visual_odom_estimator",
         parameters=[{"sim": sim, "data_folder": data_folder, "use_sim_time": sim}],
+    )
+
+    gazebo_odom_aligner = Node(
+        package=package_name,
+        executable="gazebo_odom_aligner",
+        parameters=[{"use_sim_time": sim}],
+        condition=IfCondition(sim),
     )
 
     ekf_node = Node(
@@ -73,29 +73,15 @@ def generate_launch_description():
         parameters=[{"use_sim_time": sim}],
     )
 
-    gazebo_odom_aligner = Node(
-        package=package_name,
-        executable="gazebo_odom_aligner",
-        output="screen",
-        parameters=[{"use_sim_time": sim}],
-        condition=IfCondition(sim),
-    )
-
     return LaunchDescription(
         [
             sim_arg,
             data_folder_arg,
             robot_state_publisher,
-            # joint_state_publisher,
-            TimerAction(
-                period=0.2,
-                actions=[
-                    wheel_odom_estimator,
-                    visual_odom_estimator,
-                    ekf_node,
-                    localization_initializer,
-                    gazebo_odom_aligner,
-                ],
-            ),
+            wheel_odom_estimator,
+            visual_odom_estimator,
+            gazebo_odom_aligner,
+            ekf_node,
+            localization_initializer,
         ]
     )
