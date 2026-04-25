@@ -48,7 +48,7 @@ private:
   rclcpp::Logger logger_ {rclcpp::get_logger("Nav2PurePursuitController")};
   rclcpp::Clock::SharedPtr clock_;
 
-  tf2::Transform T_base_link_rear_axle_, T_odom_map_;
+  tf2::Transform T_base_footprint_rear_axle_, T_odom_map_;
 
   nav_msgs::msg::Path global_plan_;
   PurePursuitController pure_pursuit_controller_;

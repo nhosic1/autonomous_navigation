@@ -812,9 +812,9 @@
 
   <!-- joints section -->
   <joint name="footprint_joint" type="fixed">
-    <parent link="base_link"/>
-    <child link="base_footprint"/>
-    <origin xyz="0.0 0.0 -0.1" rpy="0 0 0"/>
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0.0 0.0 0.1" rpy="0 0 0"/>
   </joint>
 
   <joint name="dummy_chassis_joint" type="fixed">

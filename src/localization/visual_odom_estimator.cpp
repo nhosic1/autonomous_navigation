@@ -14,7 +14,6 @@
 #include <filesystem>
 #include <cmath>
 #include <chrono>
-#include <stdexcept>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Transform.h>
@@ -66,24 +65,6 @@ public:
         tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
         
-        try
-        {
-            const tf2::Duration static_transform_wait = tf2::durationFromSec(3.0);
-
-            const geometry_msgs::msg::TransformStamped T_base_link_left_camera_msg =
-                tf_buffer_->lookupTransform("base_link", "left_camera", tf2::TimePointZero, static_transform_wait);
-            tf2::fromMsg(T_base_link_left_camera_msg.transform, T_base_link_left_camera_);
-            T_left_camera_base_link_ = T_base_link_left_camera_.inverse();
-
-            const geometry_msgs::msg::TransformStamped T_base_footprint_base_link_msg =
-                tf_buffer_->lookupTransform("base_footprint", "base_link", tf2::TimePointZero, static_transform_wait);
-            tf2::fromMsg(T_base_footprint_base_link_msg.transform, T_base_footprint_base_link_);
-        }
-        catch (const tf2::TransformException &ex)
-        {
-            throw std::runtime_error(std::string("visual_odom_estimator startup failed: missing required static transform: ") + ex.what());
-        }
-
         ekf_odom_subscription_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/odometry/filtered", 10,
             [this](const nav_msgs::msg::Odometry::ConstSharedPtr &msg)
@@ -94,6 +75,14 @@ public:
         // Create subscribers for left and right stereo image topics
         left_subscriber_.subscribe(this, "/autonomous_vehicle/left_camera/image", "raw");
         right_subscriber_.subscribe(this, "/autonomous_vehicle/right_camera/image", "raw");
+        left_debug_subscription_ = this->create_subscription<sensor_msgs::msg::Image>(
+            "/autonomous_vehicle/left_camera/image",
+            rclcpp::SensorDataQoS(),
+            std::bind(&VisualOdometryEstimator::left_image_debug_callback, this, std::placeholders::_1));
+        right_debug_subscription_ = this->create_subscription<sensor_msgs::msg::Image>(
+            "/autonomous_vehicle/right_camera/image",
+            rclcpp::SensorDataQoS(),
+            std::bind(&VisualOdometryEstimator::right_image_debug_callback, this, std::placeholders::_1));
 
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
@@ -102,6 +91,39 @@ public:
     }
 
 private:
+    static double stamp_to_seconds(const builtin_interfaces::msg::Time &stamp)
+    {
+        return static_cast<double>(stamp.sec) + static_cast<double>(stamp.nanosec) * 1e-9;
+    }
+
+    void left_image_debug_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg)
+    {
+        latest_left_image_stamp_ = msg->header.stamp;
+        left_image_received_ = true;
+        RCLCPP_INFO_THROTTLE(
+            this->get_logger(),
+            *this->get_clock(),
+            2000,
+            "VO left image received: stamp=%.6f frame=%s.",
+            stamp_to_seconds(msg->header.stamp),
+            msg->header.frame_id.c_str());
+    }
+
+    void right_image_debug_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg)
+    {
+        latest_right_image_stamp_ = msg->header.stamp;
+        right_image_received_ = true;
+        RCLCPP_INFO_THROTTLE(
+            this->get_logger(),
+            *this->get_clock(),
+            2000,
+            "VO right image received: stamp=%.6f frame=%s latest_left_stamp=%.6f dt=%.6f.",
+            stamp_to_seconds(msg->header.stamp),
+            msg->header.frame_id.c_str(),
+            left_image_received_ ? stamp_to_seconds(latest_left_image_stamp_) : 0.0,
+            left_image_received_ ? std::abs(stamp_to_seconds(msg->header.stamp) - stamp_to_seconds(latest_left_image_stamp_)) : 0.0);
+    }
+
     void prepare_stereo_cv_images(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr,
                                   const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr,
                                   cv::Mat &left_img,
@@ -138,6 +160,24 @@ private:
         tvec_guess_ = cv::Mat::zeros(3, 1, CV_64F);
     }
 
+    bool initialize_static_transforms()
+    {
+        try
+        {
+            const geometry_msgs::msg::TransformStamped T_base_footprint_left_camera_msg =
+                tf_buffer_->lookupTransform("base_footprint", "left_camera", tf2::TimePointZero, tf2::durationFromSec(0.1));
+            tf2::fromMsg(T_base_footprint_left_camera_msg.transform, T_base_footprint_left_camera_);
+            T_left_camera_base_footprint_ = T_base_footprint_left_camera_.inverse();
+            static_transforms_initialized_ = true;
+            return true;
+        }
+        catch (const tf2::TransformException &ex)
+        {
+            (void)ex;
+            return false;
+        }
+    }
+
     void handle_visual_odometry_failure(const cv::Mat &left_img, const builtin_interfaces::msg::Time &timestamp)
     {
         save_failure_snapshots(left_img, timestamp);
@@ -169,9 +209,9 @@ private:
         tvec_guess_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
     }
 
-    bool initialize_visual_odometry(const tf2::Transform &T_odom_base_link, nav_msgs::msg::Odometry &odom_msg)
+    bool initialize_visual_odometry(const tf2::Transform &T_odom_base_footprint, nav_msgs::msg::Odometry &odom_msg)
     {
-        T_odom_left_camera_prev_ = T_odom_base_link * T_base_link_left_camera_;
+        T_odom_left_camera_prev_ = T_odom_base_footprint * T_base_footprint_left_camera_;
 
         // Publish initial odometry message
         std_msgs::msg::Header header;
@@ -179,15 +219,14 @@ private:
         header.frame_id = "odom";
 
         odom_msg.header = header;
-        odom_msg.child_frame_id = "base_link";
+        odom_msg.child_frame_id = "base_footprint";
 
-        const tf2::Transform T_odom_base_link_current = T_odom_left_camera_prev_ * T_left_camera_base_link_;
-        tf2::Vector3 t_global = T_odom_base_link_current.getOrigin();
+        tf2::Vector3 t_global = T_odom_base_footprint.getOrigin();
         odom_msg.pose.pose.position.x = t_global.x();
         odom_msg.pose.pose.position.y = t_global.y();
         odom_msg.pose.pose.position.z = t_global.z();
 
-        tf2::Quaternion q_global = T_odom_base_link_current.getRotation();
+        tf2::Quaternion q_global = T_odom_base_footprint.getRotation();
         odom_msg.pose.pose.orientation = tf2::toMsg(q_global);
 
         odom_msg.pose.covariance = {
@@ -246,15 +285,16 @@ private:
         header.frame_id = "odom";
 
         odom_msg.header = header;
-        odom_msg.child_frame_id = "base_link";
+        odom_msg.child_frame_id = "base_footprint";
 
-        const tf2::Transform T_odom_base_link = T_odom_left_camera * T_left_camera_base_link_;
-        tf2::Vector3 t_global = T_odom_base_link.getOrigin();
+        const tf2::Transform T_odom_base_footprint = T_odom_left_camera * T_left_camera_base_footprint_;
+
+        tf2::Vector3 t_global = T_odom_base_footprint.getOrigin();
         odom_msg.pose.pose.position.x = t_global.x();
         odom_msg.pose.pose.position.y = t_global.y();
         odom_msg.pose.pose.position.z = t_global.z();
 
-        tf2::Quaternion q_global = T_odom_base_link.getRotation();
+        tf2::Quaternion q_global = T_odom_base_footprint.getRotation();
         odom_msg.pose.pose.orientation = tf2::toMsg(q_global);
 
         odom_msg.pose.covariance = {
@@ -278,21 +318,22 @@ private:
         const double epsilon = 1e-6;
         tf2::Vector3 w = (angle < epsilon) ? tf2::Vector3(0, 0, 0) : axis * (angle / dt);
 
-        const tf2::Matrix3x3 R_base_link_left_camera = T_base_link_left_camera_.getBasis();
-        const tf2::Vector3 p_base_link_left_camera = T_base_link_left_camera_.getOrigin();
-        const tf2::Vector3 v_left_camera_base_link = R_base_link_left_camera * tf2::Vector3(v_x, v_y, v_z);
-        const tf2::Vector3 w_base_link_base_link = R_base_link_left_camera * w;
+        const tf2::Matrix3x3 R_base_footprint_left_camera = T_base_footprint_left_camera_.getBasis();
+        const tf2::Vector3 p_base_footprint_left_camera = T_base_footprint_left_camera_.getOrigin();
+        const tf2::Vector3 v_left_camera_base_footprint = R_base_footprint_left_camera * tf2::Vector3(v_x, v_y, v_z);
+        const tf2::Vector3 w_base_footprint_base_footprint = R_base_footprint_left_camera * w;
         
         // Rigid-body velocity relation between two points:
         // v_cam = v_base + w x p_base->cam  =>  v_base = v_cam - w x p_base->cam
-        const tf2::Vector3 v_base_link_base_link = v_left_camera_base_link - w_base_link_base_link.cross(p_base_link_left_camera);
+        const tf2::Vector3 v_base_footprint_base_footprint =
+            v_left_camera_base_footprint - w_base_footprint_base_footprint.cross(p_base_footprint_left_camera);
 
-        odom_msg.twist.twist.linear.x = v_base_link_base_link.x();
-        odom_msg.twist.twist.linear.y = v_base_link_base_link.y();
-        odom_msg.twist.twist.linear.z = v_base_link_base_link.z();
-        odom_msg.twist.twist.angular.x = w_base_link_base_link.x();
-        odom_msg.twist.twist.angular.y = w_base_link_base_link.y();
-        odom_msg.twist.twist.angular.z = w_base_link_base_link.z();
+        odom_msg.twist.twist.linear.x = v_base_footprint_base_footprint.x();
+        odom_msg.twist.twist.linear.y = v_base_footprint_base_footprint.y();
+        odom_msg.twist.twist.linear.z = v_base_footprint_base_footprint.z();
+        odom_msg.twist.twist.angular.x = w_base_footprint_base_footprint.x();
+        odom_msg.twist.twist.angular.y = w_base_footprint_base_footprint.y();
+        odom_msg.twist.twist.angular.z = w_base_footprint_base_footprint.z();
 
         odom_msg.twist.covariance = {
             0.01, 0.0, 0.0, 0.0, 0.0, 0.0, // v_x
@@ -373,6 +414,21 @@ private:
     // Callback function for synchronized left and right stereo images
     void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr, const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr)
     {
+        RCLCPP_INFO_THROTTLE(
+            this->get_logger(),
+            *this->get_clock(),
+            2000,
+            "VO image callback entered.");
+
+        if (!static_transforms_initialized_ && !initialize_static_transforms()) {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(),
+                *this->get_clock(),
+                2000,
+                "Waiting for required static transform base_footprint -> left_camera.");
+            return;
+        }
+
         auto timestamp = std::chrono::steady_clock::now();
 
         cv::Mat left_img;
@@ -398,6 +454,13 @@ private:
         // Detect keypoints and compute their descriptors
         orb_->detectAndCompute(left_img, cv::Mat(), keypoints_L, descriptors_L);
         orb_->detectAndCompute(right_img, cv::Mat(), keypoints_R, descriptors_R);
+        RCLCPP_INFO_THROTTLE(
+            this->get_logger(),
+            *this->get_clock(),
+            2000,
+            "VO detected features: left=%zu right=%zu.",
+            keypoints_L.size(),
+            keypoints_R.size());
 
         // Build stereo observations
         std::vector<cv::Point3d> points_3D_stereo_filtered;
@@ -422,6 +485,13 @@ private:
                     handle_visual_odometry_failure(left_img, left_img_msg_ptr->header.stamp);
                     return;
                 }
+                RCLCPP_INFO_THROTTLE(
+                    this->get_logger(),
+                    *this->get_clock(),
+                    2000,
+                    "VO stereo observations: points=%zu average_depth=%.3f.",
+                    points_3D_stereo_filtered.size(),
+                    average_depth);
             }
             catch (const cv::Exception &e)
             {
@@ -488,6 +558,14 @@ private:
             nav_msgs::msg::Odometry odom_msg;
             tf2::Transform T_odom_left_camera;
             apply_visual_odometry_update(rvec, tvec, dt, odom_msg, T_odom_left_camera);
+            RCLCPP_INFO_THROTTLE(
+                this->get_logger(),
+                *this->get_clock(),
+                2000,
+                "VO published odometry update: dt=%.3f t_norm=%.3f r_norm=%.3f.",
+                dt,
+                t_norm,
+                r_norm);
 
             // Keyframe slection
             if ((((t_norm / average_depth) > 0.07 || r_norm > 5 * CV_PI / 180)) && t_norm > 0.05)
@@ -498,19 +576,23 @@ private:
         else
         {
             nav_msgs::msg::Odometry odom_msg;
-            tf2::Transform T_odom_base_link = tf2::Transform::getIdentity();
+            tf2::Transform T_odom_base_footprint = tf2::Transform::getIdentity();
             if (!latest_ekf_odom_)
             {
-                T_odom_base_link = T_base_footprint_base_link_;
                 RCLCPP_WARN(this->get_logger(), "Latest EKF odometry is unavailable during VO bootstrap. Using fallback odom == base_footprint.");
             }
             else
             {
-                tf2::fromMsg(latest_ekf_odom_->pose.pose, T_odom_base_link);
+                tf2::fromMsg(latest_ekf_odom_->pose.pose, T_odom_base_footprint);
                 RCLCPP_INFO(this->get_logger(), "Using latest EKF odometry for VO bootstrap.");
             }
 
-            initialize_visual_odometry(T_odom_base_link, odom_msg);
+            initialize_visual_odometry(T_odom_base_footprint, odom_msg);
+            RCLCPP_INFO_THROTTLE(
+                this->get_logger(),
+                *this->get_clock(),
+                2000,
+                "VO bootstrap published initial odometry.");
             update_reference_state(keypoints_L, descriptors_L, points_2D_stereo_filtered, points_3D_stereo_filtered, left_img, right_img, timestamp, odom_msg, T_odom_left_camera_prev_);
             bootstrap_complete_ = true;
         }
@@ -652,6 +734,12 @@ private:
     // Subscribers for left and right stereo images
     image_transport::SubscriberFilter left_subscriber_;
     image_transport::SubscriberFilter right_subscriber_;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_debug_subscription_;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_debug_subscription_;
+    builtin_interfaces::msg::Time latest_left_image_stamp_;
+    builtin_interfaces::msg::Time latest_right_image_stamp_;
+    bool left_image_received_ = false;
+    bool right_image_received_ = false;
 
     // Pointcloud publisher
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_publisher_;
@@ -697,10 +785,10 @@ private:
     // Global left camera pose in odom frame
     tf2::Transform T_odom_left_camera_prev_;
 
-    // Static extrinsics between base_link and left_camera
-    tf2::Transform T_base_link_left_camera_ = tf2::Transform::getIdentity();
-    tf2::Transform T_left_camera_base_link_ = tf2::Transform::getIdentity();
-    tf2::Transform T_base_footprint_base_link_ = tf2::Transform::getIdentity();
+    // Static extrinsics between base_footprint and left_camera
+    tf2::Transform T_base_footprint_left_camera_ = tf2::Transform::getIdentity();
+    tf2::Transform T_left_camera_base_footprint_ = tf2::Transform::getIdentity();
+    bool static_transforms_initialized_ = false;
 
     // Previous odometry meesage
     nav_msgs::msg::Odometry odom_msg_prev_;

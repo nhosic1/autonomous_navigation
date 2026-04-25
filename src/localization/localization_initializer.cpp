@@ -114,7 +114,8 @@ private:
             msg->pose.pose.position.z));
         T_map_base_footprint_target.setRotation(q);
 
-        const tf2::Transform T_map_odom_target = T_map_base_footprint_target * T_odom_base_footprint.inverse();
+        const tf2::Transform T_map_odom_target =
+            T_map_base_footprint_target * T_odom_base_footprint.inverse();
         T_map_odom_msg_.transform = tf2::toMsg(T_map_odom_target);
 
         // Publish the updated transform so the local odom frame is placed correctly in the map frame.

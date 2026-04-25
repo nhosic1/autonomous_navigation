@@ -57,7 +57,7 @@ namespace nav2_pure_pursuit_controller
         pure_pursuit_controller_ = PurePursuitController(
             std::vector<Point>(), v_max, d_lookahead_min, d_goal_tol, K_v_turn, K_v_stop, K_ld);
 
-        T_base_link_rear_axle_ = get_transform("base_link", "rear_axle");
+        T_base_footprint_rear_axle_ = get_transform("base_footprint", "rear_axle");
     }
 
     void Nav2PurePursuitController::cleanup()
@@ -87,9 +87,9 @@ namespace nav2_pure_pursuit_controller
         nav2_core::GoalChecker *goal_checker)
     {
         // Get rear_axle pose in odom frame
-        tf2::Transform T_odom_base_link;
-        tf2::fromMsg(pose.pose, T_odom_base_link);
-        tf2::Transform T_odom_rear_axle = T_odom_base_link * T_base_link_rear_axle_;
+        tf2::Transform T_odom_base_footprint;
+        tf2::fromMsg(pose.pose, T_odom_base_footprint);
+        tf2::Transform T_odom_rear_axle = T_odom_base_footprint * T_base_footprint_rear_axle_;
 
         double x = T_odom_rear_axle.getOrigin().x();
         double y = T_odom_rear_axle.getOrigin().y();
@@ -150,10 +150,10 @@ namespace nav2_pure_pursuit_controller
         transformed_path.reserve(path.poses.size() + 1);
         for (const auto &path_point_msg : path.poses)
         {
-            tf2::Transform T_map_base_link;
-            tf2::fromMsg(path_point_msg.pose, T_map_base_link);
-            tf2::Transform T_odom_base_link = T_odom_map_ * T_map_base_link;
-            tf2::Transform T_odom_rear_axle = T_odom_base_link * T_base_link_rear_axle_;
+            tf2::Transform T_map_base_footprint;
+            tf2::fromMsg(path_point_msg.pose, T_map_base_footprint);
+            tf2::Transform T_odom_base_footprint = T_odom_map_ * T_map_base_footprint;
+            tf2::Transform T_odom_rear_axle = T_odom_base_footprint * T_base_footprint_rear_axle_;
 
             transformed_path.emplace_back(
                 T_odom_rear_axle.getOrigin().x(),

@@ -9,7 +9,6 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <unordered_map>
-#include <stdexcept>
 #include <cmath>
 #include <limits>
 #include "autonomous_navigation/common/vehicle_constants.hpp"
@@ -25,25 +24,6 @@ public:
         tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-        try
-        {
-            const tf2::Duration static_transform_wait = tf2::durationFromSec(3.0);
-
-            const geometry_msgs::msg::TransformStamped T_base_link_rear_axle_msg =
-                tf_buffer_->lookupTransform("base_link", "rear_axle", tf2::TimePointZero, static_transform_wait);
-            tf2::fromMsg(T_base_link_rear_axle_msg.transform, T_base_link_rear_axle_);
-
-            const geometry_msgs::msg::TransformStamped T_base_footprint_base_link_msg =
-                tf_buffer_->lookupTransform("base_footprint", "base_link", tf2::TimePointZero, static_transform_wait);
-            tf2::fromMsg(T_base_footprint_base_link_msg.transform, T_base_footprint_base_link_);
-        }
-        catch (const tf2::TransformException &ex)
-        {
-            throw std::runtime_error(std::string("wheel_odom_estimator startup failed: missing required static transform: ") + ex.what());
-        }
-
-        initialize_rear_axle_odometry_state();
-
         joint_state_subscription_ = this->create_subscription<sensor_msgs::msg::JointState>(
             "/joint_states", 10,
             std::bind(&WheelOdometryEstimator::joint_state_callback, this, std::placeholders::_1));
@@ -52,16 +32,46 @@ public:
 private:
     void initialize_rear_axle_odometry_state()
     {
-        const tf2::Transform T_base_footprint_rear_axle = T_base_footprint_base_link_ * T_base_link_rear_axle_;
-        x_ = T_base_footprint_rear_axle.getOrigin().x();
-        y_ = T_base_footprint_rear_axle.getOrigin().y();
-        z_ = T_base_footprint_rear_axle.getOrigin().z();
+        x_ = T_base_footprint_rear_axle_.getOrigin().x();
+        y_ = T_base_footprint_rear_axle_.getOrigin().y();
+        z_ = T_base_footprint_rear_axle_.getOrigin().z();
         double roll, pitch;
-        T_base_footprint_rear_axle.getBasis().getRPY(roll, pitch, theta_);
+        T_base_footprint_rear_axle_.getBasis().getRPY(roll, pitch, theta_);
+        rear_axle_odometry_initialized_ = true;
+    }
+
+    bool initialize_rear_axle_transform()
+    {
+        try
+        {
+            const geometry_msgs::msg::TransformStamped T_base_footprint_rear_axle_msg =
+                tf_buffer_->lookupTransform("base_footprint", "rear_axle", tf2::TimePointZero, tf2::durationFromSec(0.1));
+            tf2::fromMsg(T_base_footprint_rear_axle_msg.transform, T_base_footprint_rear_axle_);
+            rear_axle_transform_initialized_ = true;
+            return true;
+        }
+        catch (const tf2::TransformException &ex)
+        {
+            (void)ex;
+            return false;
+        }
     }
 
     void joint_state_callback(const sensor_msgs::msg::JointState::ConstSharedPtr &msg)
     {
+        if (!rear_axle_transform_initialized_ && !initialize_rear_axle_transform()) {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(),
+                *this->get_clock(),
+                2000,
+                "Waiting for required static transform base_footprint -> rear_axle.");
+            return;
+        }
+
+        if (!rear_axle_odometry_initialized_) {
+            initialize_rear_axle_odometry_state();
+        }
+
         // Time since last update
         rclcpp::Time now = this->now();
         double dt = (now - last_time_).seconds();
@@ -155,18 +165,18 @@ private:
         T_odom_rear_axle.setOrigin(tf2::Vector3(x_, y_, z_));
         T_odom_rear_axle.setRotation(q_odom_rear_axle);
 
-        const tf2::Transform T_rear_axle_base_link = T_base_link_rear_axle_.inverse();
-        const tf2::Transform T_odom_base_link = T_odom_rear_axle * T_rear_axle_base_link;
+        const tf2::Transform T_rear_axle_base_footprint = T_base_footprint_rear_axle_.inverse();
+        const tf2::Transform T_odom_base_footprint = T_odom_rear_axle * T_rear_axle_base_footprint;
 
         nav_msgs::msg::Odometry odom;
         odom.header.stamp = now;
         odom.header.frame_id = "odom";
-        odom.child_frame_id = "base_link";
+        odom.child_frame_id = "base_footprint";
 
-        odom.pose.pose.position.x = T_odom_base_link.getOrigin().x();
-        odom.pose.pose.position.y = T_odom_base_link.getOrigin().y();
-        odom.pose.pose.position.z = T_odom_base_link.getOrigin().z();
-        odom.pose.pose.orientation = tf2::toMsg(T_odom_base_link.getRotation());
+        odom.pose.pose.position.x = T_odom_base_footprint.getOrigin().x();
+        odom.pose.pose.position.y = T_odom_base_footprint.getOrigin().y();
+        odom.pose.pose.position.z = T_odom_base_footprint.getOrigin().z();
+        odom.pose.pose.orientation = tf2::toMsg(T_odom_base_footprint.getRotation());
         odom.pose.covariance = {
             0.2, 0, 0, 0, 0, 0,  // x
             0, 0.2, 0, 0, 0, 0,  // y
@@ -178,21 +188,22 @@ private:
 
         const tf2::Vector3 v_rear_axle_rear_axle(v, 0.0, 0.0);
         const tf2::Vector3 w_rear_axle_rear_axle(0.0, 0.0, omega);
-        const tf2::Matrix3x3 R_base_link_rear_axle = T_base_link_rear_axle_.getBasis();
-        const tf2::Vector3 p_base_link_rear_axle = T_base_link_rear_axle_.getOrigin();
-        const tf2::Vector3 v_rear_axle_base_link = R_base_link_rear_axle * v_rear_axle_rear_axle;
-        const tf2::Vector3 w_base_link_base_link = R_base_link_rear_axle * w_rear_axle_rear_axle;
+        const tf2::Matrix3x3 R_base_footprint_rear_axle = T_base_footprint_rear_axle_.getBasis();
+        const tf2::Vector3 p_base_footprint_rear_axle = T_base_footprint_rear_axle_.getOrigin();
+        const tf2::Vector3 v_rear_axle_base_footprint = R_base_footprint_rear_axle * v_rear_axle_rear_axle;
+        const tf2::Vector3 w_base_footprint_base_footprint = R_base_footprint_rear_axle * w_rear_axle_rear_axle;
 
         // Rigid-body velocity relation between two points:
         // v_rear = v_base + w x p_base->rear  =>  v_base = v_rear - w x p_base->rear
-        const tf2::Vector3 v_base_link_base_link = v_rear_axle_base_link - w_base_link_base_link.cross(p_base_link_rear_axle);
+        const tf2::Vector3 v_base_footprint_base_footprint =
+            v_rear_axle_base_footprint - w_base_footprint_base_footprint.cross(p_base_footprint_rear_axle);
 
-        odom.twist.twist.linear.x = v_base_link_base_link.x();
-        odom.twist.twist.linear.y = v_base_link_base_link.y();
-        odom.twist.twist.linear.z = v_base_link_base_link.z();
-        odom.twist.twist.angular.x = w_base_link_base_link.x();
-        odom.twist.twist.angular.y = w_base_link_base_link.y();
-        odom.twist.twist.angular.z = w_base_link_base_link.z();
+        odom.twist.twist.linear.x = v_base_footprint_base_footprint.x();
+        odom.twist.twist.linear.y = v_base_footprint_base_footprint.y();
+        odom.twist.twist.linear.z = v_base_footprint_base_footprint.z();
+        odom.twist.twist.angular.x = w_base_footprint_base_footprint.x();
+        odom.twist.twist.angular.y = w_base_footprint_base_footprint.y();
+        odom.twist.twist.angular.z = w_base_footprint_base_footprint.z();
         odom.twist.covariance = {
             0.2, 0, 0, 0, 0, 0,  // v_x
             0, 0.2, 0, 0, 0, 0,  // v_y
@@ -220,8 +231,9 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
     rclcpp::Time last_time_;
-    tf2::Transform T_base_footprint_base_link_ = tf2::Transform::getIdentity();
-    tf2::Transform T_base_link_rear_axle_ = tf2::Transform::getIdentity();
+    tf2::Transform T_base_footprint_rear_axle_ = tf2::Transform::getIdentity();
+    bool rear_axle_transform_initialized_ = false;
+    bool rear_axle_odometry_initialized_ = false;
     double z_ = 0.0;
     double x_, y_, theta_;
 };
