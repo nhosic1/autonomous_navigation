@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <builtin_interfaces/msg/time.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
@@ -72,17 +73,13 @@ public:
                 latest_ekf_odom_ = msg;
             });
 
+        reset_pose_subscription_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+            "/localization/reset_pose", 10,
+            std::bind(&VisualOdometryEstimator::reset_pose_callback, this, std::placeholders::_1));
+
         // Create subscribers for left and right stereo image topics
         left_subscriber_.subscribe(this, "/autonomous_vehicle/left_camera/image", "raw");
         right_subscriber_.subscribe(this, "/autonomous_vehicle/right_camera/image", "raw");
-        left_debug_subscription_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/autonomous_vehicle/left_camera/image",
-            rclcpp::SensorDataQoS(),
-            std::bind(&VisualOdometryEstimator::left_image_debug_callback, this, std::placeholders::_1));
-        right_debug_subscription_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/autonomous_vehicle/right_camera/image",
-            rclcpp::SensorDataQoS(),
-            std::bind(&VisualOdometryEstimator::right_image_debug_callback, this, std::placeholders::_1));
 
         // Synchronize messages from both topics
         time_sync_ = std::make_shared<approximate_time_synchronizer>(approximate_time_policy(10), left_subscriber_, right_subscriber_);
@@ -91,39 +88,6 @@ public:
     }
 
 private:
-    static double stamp_to_seconds(const builtin_interfaces::msg::Time &stamp)
-    {
-        return static_cast<double>(stamp.sec) + static_cast<double>(stamp.nanosec) * 1e-9;
-    }
-
-    void left_image_debug_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg)
-    {
-        latest_left_image_stamp_ = msg->header.stamp;
-        left_image_received_ = true;
-        RCLCPP_INFO_THROTTLE(
-            this->get_logger(),
-            *this->get_clock(),
-            2000,
-            "VO left image received: stamp=%.6f frame=%s.",
-            stamp_to_seconds(msg->header.stamp),
-            msg->header.frame_id.c_str());
-    }
-
-    void right_image_debug_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg)
-    {
-        latest_right_image_stamp_ = msg->header.stamp;
-        right_image_received_ = true;
-        RCLCPP_INFO_THROTTLE(
-            this->get_logger(),
-            *this->get_clock(),
-            2000,
-            "VO right image received: stamp=%.6f frame=%s latest_left_stamp=%.6f dt=%.6f.",
-            stamp_to_seconds(msg->header.stamp),
-            msg->header.frame_id.c_str(),
-            left_image_received_ ? stamp_to_seconds(latest_left_image_stamp_) : 0.0,
-            left_image_received_ ? std::abs(stamp_to_seconds(msg->header.stamp) - stamp_to_seconds(latest_left_image_stamp_)) : 0.0);
-    }
-
     void prepare_stereo_cv_images(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr,
                                   const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr,
                                   cv::Mat &left_img,
@@ -184,6 +148,28 @@ private:
         reset_motion_estimate_guess();
 
         bootstrap_complete_ = false;
+    }
+
+    void reset_visual_odometry_state()
+    {
+        keypoints_L_prev_.clear();
+        descriptors_L_prev_.release();
+        points_2D_stereo_prev_.clear();
+        points_3D_stereo_prev_.clear();
+        keyframe_L_prev_.release();
+        keyframe_R_prev_.release();
+        odom_msg_prev_ = nav_msgs::msg::Odometry();
+        reset_motion_estimate_guess();
+        bootstrap_complete_ = false;
+    }
+
+    void reset_pose_callback(const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr &msg)
+    {
+        tf2::fromMsg(msg->pose.pose, T_odom_base_footprint_reset_);
+        bootstrap_from_reset_pose_ = true;
+        reset_visual_odometry_state();
+
+        RCLCPP_INFO(this->get_logger(), "Visual odometry hard-reset requested; next stereo frame will become the new keyframe.");
     }
 
     void update_reference_state(const std::vector<cv::KeyPoint> &keypoints_L,
@@ -414,12 +400,6 @@ private:
     // Callback function for synchronized left and right stereo images
     void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr, const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr)
     {
-        RCLCPP_INFO_THROTTLE(
-            this->get_logger(),
-            *this->get_clock(),
-            2000,
-            "VO image callback entered.");
-
         if (!static_transforms_initialized_ && !initialize_static_transforms()) {
             RCLCPP_WARN_THROTTLE(
                 this->get_logger(),
@@ -454,13 +434,6 @@ private:
         // Detect keypoints and compute their descriptors
         orb_->detectAndCompute(left_img, cv::Mat(), keypoints_L, descriptors_L);
         orb_->detectAndCompute(right_img, cv::Mat(), keypoints_R, descriptors_R);
-        RCLCPP_INFO_THROTTLE(
-            this->get_logger(),
-            *this->get_clock(),
-            2000,
-            "VO detected features: left=%zu right=%zu.",
-            keypoints_L.size(),
-            keypoints_R.size());
 
         // Build stereo observations
         std::vector<cv::Point3d> points_3D_stereo_filtered;
@@ -485,13 +458,6 @@ private:
                     handle_visual_odometry_failure(left_img, left_img_msg_ptr->header.stamp);
                     return;
                 }
-                RCLCPP_INFO_THROTTLE(
-                    this->get_logger(),
-                    *this->get_clock(),
-                    2000,
-                    "VO stereo observations: points=%zu average_depth=%.3f.",
-                    points_3D_stereo_filtered.size(),
-                    average_depth);
             }
             catch (const cv::Exception &e)
             {
@@ -558,14 +524,6 @@ private:
             nav_msgs::msg::Odometry odom_msg;
             tf2::Transform T_odom_left_camera;
             apply_visual_odometry_update(rvec, tvec, dt, odom_msg, T_odom_left_camera);
-            RCLCPP_INFO_THROTTLE(
-                this->get_logger(),
-                *this->get_clock(),
-                2000,
-                "VO published odometry update: dt=%.3f t_norm=%.3f r_norm=%.3f.",
-                dt,
-                t_norm,
-                r_norm);
 
             // Keyframe slection
             if ((((t_norm / average_depth) > 0.07 || r_norm > 5 * CV_PI / 180)) && t_norm > 0.05)
@@ -577,7 +535,12 @@ private:
         {
             nav_msgs::msg::Odometry odom_msg;
             tf2::Transform T_odom_base_footprint = tf2::Transform::getIdentity();
-            if (!latest_ekf_odom_)
+            if (bootstrap_from_reset_pose_)
+            {
+                T_odom_base_footprint = T_odom_base_footprint_reset_;
+                RCLCPP_INFO(this->get_logger(), "Using localization reset pose for VO bootstrap.");
+            }
+            else if (!latest_ekf_odom_)
             {
                 RCLCPP_WARN(this->get_logger(), "Latest EKF odometry is unavailable during VO bootstrap. Using fallback odom == base_footprint.");
             }
@@ -588,13 +551,9 @@ private:
             }
 
             initialize_visual_odometry(T_odom_base_footprint, odom_msg);
-            RCLCPP_INFO_THROTTLE(
-                this->get_logger(),
-                *this->get_clock(),
-                2000,
-                "VO bootstrap published initial odometry.");
             update_reference_state(keypoints_L, descriptors_L, points_2D_stereo_filtered, points_3D_stereo_filtered, left_img, right_img, timestamp, odom_msg, T_odom_left_camera_prev_);
             bootstrap_complete_ = true;
+            bootstrap_from_reset_pose_ = false;
         }
 
         callback_count_++;
@@ -730,16 +689,11 @@ private:
     // Subscriber for odometry messages from Extended Kalman Filter
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr ekf_odom_subscription_;
     nav_msgs::msg::Odometry::ConstSharedPtr latest_ekf_odom_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr reset_pose_subscription_;
 
     // Subscribers for left and right stereo images
     image_transport::SubscriberFilter left_subscriber_;
     image_transport::SubscriberFilter right_subscriber_;
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr left_debug_subscription_;
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr right_debug_subscription_;
-    builtin_interfaces::msg::Time latest_left_image_stamp_;
-    builtin_interfaces::msg::Time latest_right_image_stamp_;
-    bool left_image_received_ = false;
-    bool right_image_received_ = false;
 
     // Pointcloud publisher
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_publisher_;
@@ -801,6 +755,8 @@ private:
     std::chrono::time_point<std::chrono::steady_clock> timestamp_prev_;
 
     bool bootstrap_complete_ = false;
+    bool bootstrap_from_reset_pose_ = false;
+    tf2::Transform T_odom_base_footprint_reset_ = tf2::Transform::getIdentity();
 
     double v_max_ = 1.0; // unit: [m/s]
     double velocity_rejection_timeout_ = 0.2; // unit: [s]

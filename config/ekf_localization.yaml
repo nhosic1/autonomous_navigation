@@ -21,7 +21,7 @@ ekf_filter_node:
     imu0_differential: false
     imu0_remove_gravitational_acceleration: true
     imu0_queue_size: 10
-    imu0_relative: true
+    imu0_relative: false
 
     odom0: /autonomous_vehicle/odometry/visual
     odom0_config: [true,  true, false,
@@ -32,7 +32,7 @@ ekf_filter_node:
 
     odom0_differential: false
     odom0_queue_size: 2
-    odom0_relative: true
+    odom0_relative: false
 
     twist0: /autonomous_vehicle/twist/wheel
     twist0_config: [false, false, false,

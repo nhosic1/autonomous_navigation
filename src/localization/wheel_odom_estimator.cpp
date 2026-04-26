@@ -1,4 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
@@ -27,17 +28,28 @@ public:
         joint_state_subscription_ = this->create_subscription<sensor_msgs::msg::JointState>(
             "/joint_states", 10,
             std::bind(&WheelOdometryEstimator::joint_state_callback, this, std::placeholders::_1));
+
+        reset_pose_subscription_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+            "/localization/reset_pose", 10,
+            std::bind(&WheelOdometryEstimator::reset_pose_callback, this, std::placeholders::_1));
     }
 
 private:
+    void set_rear_axle_odometry_state(const tf2::Transform &T_odom_rear_axle)
+    {
+        x_ = T_odom_rear_axle.getOrigin().x();
+        y_ = T_odom_rear_axle.getOrigin().y();
+        z_ = T_odom_rear_axle.getOrigin().z();
+
+        double roll, pitch;
+        T_odom_rear_axle.getBasis().getRPY(roll, pitch, theta_);
+        rear_axle_odometry_initialized_ = true;
+        last_time_ = this->now();
+    }
+
     void initialize_rear_axle_odometry_state()
     {
-        x_ = T_base_footprint_rear_axle_.getOrigin().x();
-        y_ = T_base_footprint_rear_axle_.getOrigin().y();
-        z_ = T_base_footprint_rear_axle_.getOrigin().z();
-        double roll, pitch;
-        T_base_footprint_rear_axle_.getBasis().getRPY(roll, pitch, theta_);
-        rear_axle_odometry_initialized_ = true;
+        set_rear_axle_odometry_state(T_base_footprint_rear_axle_);
     }
 
     bool initialize_rear_axle_transform()
@@ -55,6 +67,69 @@ private:
             (void)ex;
             return false;
         }
+    }
+
+    void publish_reset_odometry()
+    {
+        tf2::Quaternion q_odom_rear_axle;
+        q_odom_rear_axle.setRPY(0.0, 0.0, theta_);
+        q_odom_rear_axle.normalize();
+
+        tf2::Transform T_odom_rear_axle;
+        T_odom_rear_axle.setOrigin(tf2::Vector3(x_, y_, z_));
+        T_odom_rear_axle.setRotation(q_odom_rear_axle);
+
+        const tf2::Transform T_odom_base_footprint =
+            T_odom_rear_axle * T_base_footprint_rear_axle_.inverse();
+
+        nav_msgs::msg::Odometry odom;
+        odom.header.stamp = this->now();
+        odom.header.frame_id = "odom";
+        odom.child_frame_id = "base_footprint";
+        odom.pose.pose.position.x = T_odom_base_footprint.getOrigin().x();
+        odom.pose.pose.position.y = T_odom_base_footprint.getOrigin().y();
+        odom.pose.pose.position.z = T_odom_base_footprint.getOrigin().z();
+        odom.pose.pose.orientation = tf2::toMsg(T_odom_base_footprint.getRotation());
+        odom.pose.covariance = {
+            0.2, 0, 0, 0, 0, 0,
+            0, 0.2, 0, 0, 0, 0,
+            0, 0, 9999, 0, 0, 0,
+            0, 0, 0, 9999, 0, 0,
+            0, 0, 0, 0, 9999, 0,
+            0, 0, 0, 0, 0, 0.3
+        };
+        odom.twist.covariance = {
+            0.2, 0, 0, 0, 0, 0,
+            0, 0.2, 0, 0, 0, 0,
+            0, 0, 9999, 0, 0, 0,
+            0, 0, 0, 9999, 0, 0,
+            0, 0, 0, 0, 9999, 0,
+            0, 0, 0, 0, 0, 0.3
+        };
+        odom_publisher_->publish(odom);
+
+        geometry_msgs::msg::TwistWithCovarianceStamped twist;
+        twist.header.stamp = odom.header.stamp;
+        twist.header.frame_id = odom.child_frame_id;
+        twist.twist = odom.twist;
+        twist_publisher_->publish(twist);
+    }
+
+    void reset_pose_callback(const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr &msg)
+    {
+        if (!rear_axle_transform_initialized_ && !initialize_rear_axle_transform()) {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Wheel odometry reset skipped because base_footprint -> rear_axle is unavailable.");
+            return;
+        }
+
+        tf2::Transform T_odom_base_footprint;
+        tf2::fromMsg(msg->pose.pose, T_odom_base_footprint);
+        set_rear_axle_odometry_state(T_odom_base_footprint * T_base_footprint_rear_axle_);
+        publish_reset_odometry();
+
+        RCLCPP_INFO(this->get_logger(), "Wheel odometry hard-reset to localization reset pose.");
     }
 
     void joint_state_callback(const sensor_msgs::msg::JointState::ConstSharedPtr &msg)
@@ -227,6 +302,7 @@ private:
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_publisher_;
     rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_publisher_;
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_subscription_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr reset_pose_subscription_;
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 

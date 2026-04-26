@@ -1,7 +1,11 @@
 #include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <tf2/LinearMath/Transform.h>
+#include <tf2/exceptions.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 
 class GazeboOdomAligner : public rclcpp::Node
 {
@@ -14,6 +18,13 @@ public:
         gazebo_odom_subscription_ = this->create_subscription<nav_msgs::msg::Odometry>(
             "/autonomous_vehicle/odometry/gazebo", 10,
             std::bind(&GazeboOdomAligner::gazebo_odom_callback, this, std::placeholders::_1));
+
+        reset_pose_subscription_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+            "/localization/reset_pose", 10,
+            std::bind(&GazeboOdomAligner::reset_pose_callback, this, std::placeholders::_1));
+
+        tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
     }
 
 private:
@@ -34,6 +45,13 @@ private:
         return pose_msg;
     }
 
+    void set_alignment(const tf2::Transform &T_odom_base_link,
+                       const tf2::Transform &T_sim_odom_base_link)
+    {
+        T_odom_sim_odom_ = T_odom_base_link * T_sim_odom_base_link.inverse();
+        alignment_initialized_ = true;
+    }
+
     void initialize_alignment(const nav_msgs::msg::Odometry::ConstSharedPtr &gazebo_odom)
     {
         const tf2::Transform T_sim_odom_base_link = pose_to_transform(gazebo_odom->pose.pose);
@@ -46,15 +64,64 @@ private:
         T_odom_base_link_initial.setOrigin(tf2::Vector3(0.0, 0.0, initial_position.z()));
         T_odom_base_link_initial.setRotation(aligned_rotation);
 
-        T_odom_sim_odom_ = T_odom_base_link_initial * T_sim_odom_base_link.inverse();
-        alignment_initialized_ = true;
-
+        set_alignment(T_odom_base_link_initial, T_sim_odom_base_link);
         RCLCPP_INFO(this->get_logger(), "Gazebo odometry alignment initialized.");
+    }
+
+    bool apply_pending_reset_alignment()
+    {
+        if (!reset_pose_pending_ || !latest_gazebo_odom_)
+        {
+            return false;
+        }
+
+        geometry_msgs::msg::TransformStamped T_base_footprint_base_link_msg;
+        try
+        {
+            T_base_footprint_base_link_msg = tf_buffer_->lookupTransform(
+                "base_footprint", "base_link", tf2::TimePointZero, tf2::durationFromSec(0.1));
+        }
+        catch (const tf2::TransformException &ex)
+        {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(),
+                *this->get_clock(),
+                2000,
+                "Gazebo odometry reset is waiting for base_footprint -> base_link: %s",
+                ex.what());
+            return false;
+        }
+
+        tf2::Transform T_base_footprint_base_link;
+        tf2::fromMsg(T_base_footprint_base_link_msg.transform, T_base_footprint_base_link);
+
+        const tf2::Transform T_sim_odom_base_link =
+            pose_to_transform(latest_gazebo_odom_->pose.pose);
+        set_alignment(
+            T_odom_base_footprint_reset_ * T_base_footprint_base_link,
+            T_sim_odom_base_link);
+
+        reset_pose_pending_ = false;
+        RCLCPP_INFO(this->get_logger(), "Gazebo odometry alignment hard-reset to localization reset pose.");
+        return true;
+    }
+
+    void reset_pose_callback(const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr &msg)
+    {
+        tf2::fromMsg(msg->pose.pose, T_odom_base_footprint_reset_);
+        reset_pose_pending_ = true;
+        apply_pending_reset_alignment();
     }
 
     void gazebo_odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr &msg)
     {
-        if (!alignment_initialized_)
+        latest_gazebo_odom_ = msg;
+
+        if (reset_pose_pending_)
+        {
+            apply_pending_reset_alignment();
+        }
+        else if (!alignment_initialized_)
         {
             initialize_alignment(msg);
         }
@@ -96,9 +163,15 @@ private:
 
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr aligned_odom_publisher_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr gazebo_odom_subscription_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr reset_pose_subscription_;
+    nav_msgs::msg::Odometry::ConstSharedPtr latest_gazebo_odom_;
+    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
     tf2::Transform T_odom_sim_odom_;
+    tf2::Transform T_odom_base_footprint_reset_ = tf2::Transform::getIdentity();
     bool alignment_initialized_ = false;
+    bool reset_pose_pending_ = false;
 };
 
 int main(int argc, char **argv)
