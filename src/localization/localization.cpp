@@ -1,4 +1,6 @@
 #include <opencv2/opencv.hpp>
+#include <algorithm>
+#include <cmath>
 #include "autonomous_navigation/localization/localization.hpp"
 
 namespace loc
@@ -31,15 +33,18 @@ namespace loc
     // - keypoints / descriptors: ORB features from the current image
     // - points_2D / points_3D: stereo observations from the previous reference image, where each
     //   2D point corresponds to a 3D point expressed in the previous camera frame
-    // - rvec / tvec: initial pose guess for PnP; on success they are overwritten with the
-    //   estimated transform that maps previous-frame 3D points into the current camera frame
+    // - pose_estimate.rvec / pose_estimate.tvec: initial pose guess for PnP; on success they are
+    //   overwritten with the estimated transform that maps previous-frame 3D points into the
+    //   current camera frame
     //
     // Outputs:
     // - points_2D_filtered / points_3D_filtered: the 2D-3D correspondences that survived
     //   solvePnPRansac() and can be reused later as motion-consistent inliers
-    // - rvec / tvec: pose estimate returned by solvePnPRansac(); both have CV_64F data type
-    bool compute_local_pose(const cv::Mat &camera_matrix, const cv::Mat &dist_coeffs, const cv::Ptr<cv::DescriptorMatcher> &matcher, const std::vector<cv::KeyPoint> &keypoints_prev, const cv::Mat &descriptors_prev, const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors, const std::vector<cv::Point2d> &points_2D, const std::vector<cv::Point3d> &points_3D, std::vector<cv::Point2d> &points_2D_filtered, std::vector<cv::Point3d> &points_3D_filtered, cv::Mat &rvec, cv::Mat &tvec)
+    // - pose_estimate: pose estimate and quality metrics returned by solvePnPRansac()
+    bool compute_local_pose(const cv::Mat &camera_matrix, const cv::Mat &dist_coeffs, const cv::Ptr<cv::DescriptorMatcher> &matcher, const std::vector<cv::KeyPoint> &keypoints_prev, const cv::Mat &descriptors_prev, const std::vector<cv::KeyPoint> &keypoints, const cv::Mat &descriptors, const std::vector<cv::Point2d> &points_2D, const std::vector<cv::Point3d> &points_3D, std::vector<cv::Point2d> &points_2D_filtered, std::vector<cv::Point3d> &points_3D_filtered, PoseEstimate &pose_estimate)
     {
+        pose_estimate.quality = PoseEstimateQuality();
+
         std::vector<std::vector<cv::DMatch>> matches;
 
         // Find matches
@@ -69,6 +74,7 @@ namespace loc
                 }
             }
         }
+        pose_estimate.quality.matched_count = points_2.size();
 
         // Apply RANSAC with essential matrix as fitting model
         std::vector<cv::Point2d> &points_2D_matched_prev = points_1, &points_2D_matched = points_2;
@@ -84,7 +90,7 @@ namespace loc
         }
 
         std::vector<cv::Point2f> points_2D_proj;
-        cv::projectPoints(points_3D_f, rvec, tvec, camera_matrix, dist_coeffs, points_2D_proj);
+        cv::projectPoints(points_3D_f, pose_estimate.rvec, pose_estimate.tvec, camera_matrix, dist_coeffs, points_2D_proj);
 
         // Find 3D-2D pairs for PnP algorithm
         std::vector<cv::Point2d> points_2D_pnp;
@@ -110,6 +116,7 @@ namespace loc
                 }
             }
         }
+        pose_estimate.quality.pnp_candidate_count = points_2D_pnp.size();
 
         // Run PnP algorithm to find local pose (rotation and translation vector)
         bool success = false;
@@ -123,8 +130,8 @@ namespace loc
                 points_2D_pnp,         // Corresponding 2D points from current frame
                 camera_matrix,         // Camera matrix
                 dist_coeffs,           // Distortion coefficients
-                rvec,                  // Output rotation vector
-                tvec,                  // Output translation vector
+                pose_estimate.rvec,    // Output rotation vector
+                pose_estimate.tvec,    // Output translation vector
                 true,                  // Use initial guess
                 100,                   // Number of iterations
                 8.0,                   // Reprojection error threshold
@@ -144,6 +151,45 @@ namespace loc
                 int idx = inliers[i];
                 points_2D_filtered.push_back(points_2D_pnp[idx]);
                 points_3D_filtered.push_back(points_3D_pnp[idx]);
+            }
+
+            pose_estimate.quality.inlier_count = points_3D_filtered.size();
+            if (!points_3D_pnp.empty())
+            {
+                pose_estimate.quality.inlier_ratio = static_cast<double>(pose_estimate.quality.inlier_count) /
+                                                     static_cast<double>(points_3D_pnp.size());
+            }
+
+            if (!points_3D_filtered.empty())
+            {
+                std::vector<cv::Point3f> inlier_points_3D_f;
+                inlier_points_3D_f.reserve(points_3D_filtered.size());
+                for (const auto &point : points_3D_filtered)
+                {
+                    inlier_points_3D_f.emplace_back(
+                        static_cast<float>(point.x),
+                        static_cast<float>(point.y),
+                        static_cast<float>(point.z));
+                }
+
+                std::vector<cv::Point2f> reprojected_points;
+                cv::projectPoints(inlier_points_3D_f, pose_estimate.rvec, pose_estimate.tvec, camera_matrix, dist_coeffs, reprojected_points);
+
+                double squared_error_sum = 0.0;
+                double max_error = 0.0;
+                for (size_t i = 0; i < reprojected_points.size(); ++i)
+                {
+                    const cv::Point2d reprojected_point(
+                        static_cast<double>(reprojected_points[i].x),
+                        static_cast<double>(reprojected_points[i].y));
+                    const double error = cv::norm(points_2D_filtered[i] - reprojected_point);
+                    squared_error_sum += error * error;
+                    max_error = std::max(max_error, error);
+                }
+
+                pose_estimate.quality.reprojection_rmse = std::sqrt(
+                    squared_error_sum / static_cast<double>(reprojected_points.size()));
+                pose_estimate.quality.reprojection_max_error = max_error;
             }
         }
 

@@ -37,9 +37,9 @@ public:
     VisualOdometryEstimator() : Node("visual_odom_estimator")
     {
         // Report average accepted visual odometry updates over a longer window.
-        timer_ = this->create_wall_timer(std::chrono::seconds(5), [this]()
+        timer_ = this->create_wall_timer(std::chrono::seconds(15), [this]()
                                          {
-            RCLCPP_INFO(this->get_logger(), "VO update rate = %.1f", callback_count_ / 5.0);
+            RCLCPP_INFO(this->get_logger(), "VO update rate = %.1f", callback_count_ / 15.0);
 
             // Reset the accepted update count for the next reporting window.
             callback_count_ = 0; });
@@ -47,6 +47,12 @@ public:
         this->declare_parameter("snapshot", false);
         this->declare_parameter("data_folder", "");
         this->declare_parameter("sim", false);
+        this->declare_parameter("min_pnp_inliers", 20);
+        this->declare_parameter("min_pnp_inlier_ratio", 0.35);
+        this->declare_parameter("max_pnp_reprojection_rmse", 4.0);
+        this->declare_parameter("max_pnp_reprojection_error", 12.0);
+        this->declare_parameter("max_translation_update", 0.75);
+        this->declare_parameter("max_rotation_update", 20.0 * CV_PI / 180.0);
 
         std::string package_name = "autonomous_navigation";
         std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
@@ -114,6 +120,11 @@ private:
 
     void save_failure_snapshots(const cv::Mat &left_img, const builtin_interfaces::msg::Time &timestamp)
     {
+        if (this->get_parameter("data_folder").as_string().empty())
+        {
+            return;
+        }
+
         save_snapshots(keyframe_L_prev_, left_img, timestamp);
         save_snapshots(keyframe_L_prev_, keyframe_R_prev_, timestamp, "stereo_prev_");
     }
@@ -397,6 +408,53 @@ private:
         return true;
     }
 
+    bool is_pose_estimate_valid(const loc::PoseEstimate &pose_estimate)
+    {
+        const loc::PoseEstimateQuality &quality = pose_estimate.quality;
+        const double t_norm = cv::norm(pose_estimate.tvec);
+        const double r_norm = cv::norm(pose_estimate.rvec);
+        const int min_pnp_inliers = this->get_parameter("min_pnp_inliers").as_int();
+        const double min_pnp_inlier_ratio = this->get_parameter("min_pnp_inlier_ratio").as_double();
+        const double max_pnp_reprojection_rmse = this->get_parameter("max_pnp_reprojection_rmse").as_double();
+        const double max_pnp_reprojection_error = this->get_parameter("max_pnp_reprojection_error").as_double();
+        const double max_translation_update = this->get_parameter("max_translation_update").as_double();
+        const double max_rotation_update = this->get_parameter("max_rotation_update").as_double();
+
+        if (static_cast<int>(quality.inlier_count) < min_pnp_inliers)
+        {
+            return false;
+        }
+
+        if (quality.inlier_ratio < min_pnp_inlier_ratio)
+        {
+            return false;
+        }
+
+        if (!std::isfinite(quality.reprojection_rmse) ||
+            quality.reprojection_rmse > max_pnp_reprojection_rmse)
+        {
+            return false;
+        }
+
+        if (!std::isfinite(quality.reprojection_max_error) ||
+            quality.reprojection_max_error > max_pnp_reprojection_error)
+        {
+            return false;
+        }
+
+        if (t_norm > max_translation_update)
+        {
+            return false;
+        }
+
+        if (r_norm > max_rotation_update)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     // Callback function for synchronized left and right stereo images
     void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr, const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr)
     {
@@ -471,8 +529,9 @@ private:
         if (bootstrap_complete_)
         {
             bool success = false;
-            cv::Mat rvec = rvec_guess_.clone();
-            cv::Mat tvec = tvec_guess_.clone();
+            loc::PoseEstimate pose_estimate;
+            pose_estimate.rvec = rvec_guess_.clone();
+            pose_estimate.tvec = tvec_guess_.clone();
 
             // Placeholders for possible future reuse of motion-consistent PnP inliers
             std::vector<cv::Point2d> points_2D_stereo_prev_filtered;
@@ -480,7 +539,7 @@ private:
 
             try
             {
-                success = loc::compute_local_pose(camera_matrix_L_rect_, cv::Mat(), matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, points_2D_stereo_prev_filtered, points_3D_stereo_prev_filtered, rvec, tvec);
+                success = loc::compute_local_pose(camera_matrix_L_rect_, cv::Mat(), matcher_, keypoints_L_prev_, descriptors_L_prev_, keypoints_L, descriptors_L, points_2D_stereo_prev_, points_3D_stereo_prev_, points_2D_stereo_prev_filtered, points_3D_stereo_prev_filtered, pose_estimate);
             }
             catch (const cv::Exception &e)
             {
@@ -498,32 +557,35 @@ private:
                 return;
             }
 
-                double dt = std::chrono::duration_cast<std::chrono::duration<double>>(timestamp - timestamp_prev_).count(); // unit: [s]
+            double dt = std::chrono::duration_cast<std::chrono::duration<double>>(timestamp - timestamp_prev_).count(); // unit: [s]
 
-                double t_norm = cv::norm(tvec); // unit: [m]
-                double r_norm = cv::norm(rvec); // unit: [rad]
+            double t_norm = cv::norm(pose_estimate.tvec); // unit: [m]
+            double r_norm = cv::norm(pose_estimate.rvec); // unit: [rad]
 
-                double v_estimate = t_norm / dt; // unit: [m/s]
-                if (std::abs(v_estimate) > v_max_)
-                {
-                    if (dt >= velocity_rejection_timeout_)
-                    {
-                        RCLCPP_ERROR(this->get_logger(), "Visual odometry chain is broken: velocity rejection timeout exceeded after rejected updates. Restarting visual odometry.");
-
-                        handle_visual_odometry_failure(left_img, left_img_msg_ptr->header.stamp);
-                        return;
-                }
-
-                RCLCPP_WARN(this->get_logger(), "Visual odometry update rejected: estimated linear velocity exceeds the maximum expected value. Skipping publication for this frame.");
+            if (!is_pose_estimate_valid(pose_estimate))
+            {
+                RCLCPP_WARN(
+                    this->get_logger(),
+                    "Visual odometry update rejected: matches=%zu, candidates=%zu, inliers=%zu, inlier_ratio=%.2f, reprojection_rmse=%.2f px, max_reprojection_error=%.2f px, translation=%.2f m, rotation=%.2f deg.",
+                    pose_estimate.quality.matched_count,
+                    pose_estimate.quality.pnp_candidate_count,
+                    pose_estimate.quality.inlier_count,
+                    pose_estimate.quality.inlier_ratio,
+                    pose_estimate.quality.reprojection_rmse,
+                    pose_estimate.quality.reprojection_max_error,
+                    t_norm,
+                    r_norm * 180.0 / CV_PI);
+                RCLCPP_ERROR(this->get_logger(), "Visual odometry chain is broken: pose quality gate rejected the local pose. Restarting visual odometry.");
+                handle_visual_odometry_failure(left_img, left_img_msg_ptr->header.stamp);
                 return;
             }
 
-            rvec_guess_ = rvec;
-            tvec_guess_ = tvec;
+            rvec_guess_ = pose_estimate.rvec;
+            tvec_guess_ = pose_estimate.tvec;
 
             nav_msgs::msg::Odometry odom_msg;
             tf2::Transform T_odom_left_camera;
-            apply_visual_odometry_update(rvec, tvec, dt, odom_msg, T_odom_left_camera);
+            apply_visual_odometry_update(pose_estimate.rvec, pose_estimate.tvec, dt, odom_msg, T_odom_left_camera);
 
             // Keyframe slection
             if ((((t_norm / average_depth) > 0.07 || r_norm > 5 * CV_PI / 180)) && t_norm > 0.05)
@@ -758,8 +820,6 @@ private:
     bool bootstrap_from_reset_pose_ = false;
     tf2::Transform T_odom_base_footprint_reset_ = tf2::Transform::getIdentity();
 
-    double v_max_ = 1.0; // unit: [m/s]
-    double velocity_rejection_timeout_ = 0.2; // unit: [s]
 };
 
 int main(int argc, char **argv)
