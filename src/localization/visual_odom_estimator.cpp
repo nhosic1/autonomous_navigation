@@ -36,23 +36,24 @@ class VisualOdometryEstimator : public rclcpp::Node
 public:
     VisualOdometryEstimator() : Node("visual_odom_estimator")
     {
-        // Report average accepted visual odometry updates over a longer window.
+        // Report average accepted visual odometry processing time over a longer window.
         timer_ = this->create_wall_timer(std::chrono::seconds(15), [this]()
                                          {
-            RCLCPP_INFO(this->get_logger(), "VO update rate = %.1f", callback_count_ / 15.0);
+            const double average_processing_time_ms =
+                callback_count_ > 0 ? processing_time_sum_ms_ / static_cast<double>(callback_count_) : 0.0;
+            RCLCPP_INFO(
+                this->get_logger(),
+                "VO average processing time = %.1f ms over %d updates",
+                average_processing_time_ms,
+                callback_count_);
 
-            // Reset the accepted update count for the next reporting window.
+            // Reset the accepted update measurements for the next reporting window.
+            processing_time_sum_ms_ = 0.0;
             callback_count_ = 0; });
 
         this->declare_parameter("snapshot", false);
         this->declare_parameter("data_folder", "");
         this->declare_parameter("sim", false);
-        this->declare_parameter("min_pnp_inliers", 20);
-        this->declare_parameter("min_pnp_inlier_ratio", 0.35);
-        this->declare_parameter("max_pnp_reprojection_rmse", 4.0);
-        this->declare_parameter("max_pnp_reprojection_error", 12.0);
-        this->declare_parameter("max_translation_update", 0.75);
-        this->declare_parameter("max_rotation_update", 20.0 * CV_PI / 180.0);
 
         std::string package_name = "autonomous_navigation";
         std::string package_share_directory = ament_index_cpp::get_package_share_directory(package_name);
@@ -189,7 +190,7 @@ private:
                                 const std::vector<cv::Point3d> &points_3D_stereo_filtered,
                                 const cv::Mat &left_img,
                                 const cv::Mat &right_img,
-                                const std::chrono::time_point<std::chrono::steady_clock> &timestamp,
+                                const rclcpp::Time &timestamp,
                                 const nav_msgs::msg::Odometry &odom_msg,
                                 const tf2::Transform &T_odom_left_camera)
     {
@@ -206,13 +207,15 @@ private:
         tvec_guess_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
     }
 
-    bool initialize_visual_odometry(const tf2::Transform &T_odom_base_footprint, nav_msgs::msg::Odometry &odom_msg)
+    bool initialize_visual_odometry(const tf2::Transform &T_odom_base_footprint,
+                                    const rclcpp::Time &stamp,
+                                    nav_msgs::msg::Odometry &odom_msg)
     {
         T_odom_left_camera_prev_ = T_odom_base_footprint * T_base_footprint_left_camera_;
 
         // Publish initial odometry message
         std_msgs::msg::Header header;
-        header.stamp = this->get_clock()->now();
+        header.stamp = stamp;
         header.frame_id = "odom";
 
         odom_msg.header = header;
@@ -251,6 +254,7 @@ private:
     void apply_visual_odometry_update(const cv::Mat &rvec,
                                       const cv::Mat &tvec,
                                       double dt,
+                                      const rclcpp::Time &stamp,
                                       nav_msgs::msg::Odometry &odom_msg,
                                       tf2::Transform &T_odom_left_camera)
     {
@@ -278,7 +282,7 @@ private:
 
         // Fill the odometry message
         std_msgs::msg::Header header;
-        header.stamp = this->get_clock()->now();
+        header.stamp = stamp;
         header.frame_id = "odom";
 
         odom_msg.header = header;
@@ -413,12 +417,12 @@ private:
         const loc::PoseEstimateQuality &quality = pose_estimate.quality;
         const double t_norm = cv::norm(pose_estimate.tvec);
         const double r_norm = cv::norm(pose_estimate.rvec);
-        const int min_pnp_inliers = this->get_parameter("min_pnp_inliers").as_int();
-        const double min_pnp_inlier_ratio = this->get_parameter("min_pnp_inlier_ratio").as_double();
-        const double max_pnp_reprojection_rmse = this->get_parameter("max_pnp_reprojection_rmse").as_double();
-        const double max_pnp_reprojection_error = this->get_parameter("max_pnp_reprojection_error").as_double();
-        const double max_translation_update = this->get_parameter("max_translation_update").as_double();
-        const double max_rotation_update = this->get_parameter("max_rotation_update").as_double();
+        constexpr int min_pnp_inliers = 20;
+        constexpr double min_pnp_inlier_ratio = 0.35;
+        constexpr double max_pnp_reprojection_rmse = 4.0;
+        constexpr double max_pnp_reprojection_error = 12.0;
+        constexpr double max_translation_update = 0.75;
+        constexpr double max_rotation_update = 20.0 * CV_PI / 180.0;
 
         if (static_cast<int>(quality.inlier_count) < min_pnp_inliers)
         {
@@ -458,6 +462,8 @@ private:
     // Callback function for synchronized left and right stereo images
     void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &left_img_msg_ptr, const sensor_msgs::msg::Image::ConstSharedPtr &right_img_msg_ptr)
     {
+        const auto processing_start = std::chrono::steady_clock::now();
+
         if (!static_transforms_initialized_ && !initialize_static_transforms()) {
             RCLCPP_WARN_THROTTLE(
                 this->get_logger(),
@@ -467,7 +473,7 @@ private:
             return;
         }
 
-        auto timestamp = std::chrono::steady_clock::now();
+        const rclcpp::Time timestamp(left_img_msg_ptr->header.stamp);
 
         cv::Mat left_img;
         cv::Mat right_img;
@@ -557,7 +563,15 @@ private:
                 return;
             }
 
-            double dt = std::chrono::duration_cast<std::chrono::duration<double>>(timestamp - timestamp_prev_).count(); // unit: [s]
+            double dt = (timestamp - timestamp_prev_).seconds(); // unit: [s]
+            if (dt <= 0.0)
+            {
+                RCLCPP_WARN(
+                    this->get_logger(),
+                    "Visual odometry update skipped because image timestamp did not advance: dt=%.6f s.",
+                    dt);
+                return;
+            }
 
             double t_norm = cv::norm(pose_estimate.tvec); // unit: [m]
             double r_norm = cv::norm(pose_estimate.rvec); // unit: [rad]
@@ -585,7 +599,7 @@ private:
 
             nav_msgs::msg::Odometry odom_msg;
             tf2::Transform T_odom_left_camera;
-            apply_visual_odometry_update(pose_estimate.rvec, pose_estimate.tvec, dt, odom_msg, T_odom_left_camera);
+            apply_visual_odometry_update(pose_estimate.rvec, pose_estimate.tvec, dt, timestamp, odom_msg, T_odom_left_camera);
 
             // Keyframe slection
             if ((((t_norm / average_depth) > 0.07 || r_norm > 5 * CV_PI / 180)) && t_norm > 0.05)
@@ -612,12 +626,14 @@ private:
                 RCLCPP_INFO(this->get_logger(), "Using latest EKF odometry for VO bootstrap.");
             }
 
-            initialize_visual_odometry(T_odom_base_footprint, odom_msg);
+            initialize_visual_odometry(T_odom_base_footprint, timestamp, odom_msg);
             update_reference_state(keypoints_L, descriptors_L, points_2D_stereo_filtered, points_3D_stereo_filtered, left_img, right_img, timestamp, odom_msg, T_odom_left_camera_prev_);
             bootstrap_complete_ = true;
             bootstrap_from_reset_pose_ = false;
         }
 
+        const auto processing_end = std::chrono::steady_clock::now();
+        processing_time_sum_ms_ += std::chrono::duration<double, std::milli>(processing_end - processing_start).count();
         callback_count_++;
 
         bool snapshot = this->get_parameter("snapshot").as_bool();
@@ -767,6 +783,7 @@ private:
     std::shared_ptr<approximate_time_synchronizer> time_sync_;
 
     int callback_count_ = 0;
+    double processing_time_sum_ms_ = 0.0;
     rclcpp::TimerBase::SharedPtr timer_;
 
     // Stereo camera params
@@ -814,7 +831,7 @@ private:
     cv::Mat tvec_guess_ = cv::Mat::zeros(3, 1, CV_64F); // No translation
 
     // Keyframe timestamp
-    std::chrono::time_point<std::chrono::steady_clock> timestamp_prev_;
+    rclcpp::Time timestamp_prev_;
 
     bool bootstrap_complete_ = false;
     bool bootstrap_from_reset_pose_ = false;
