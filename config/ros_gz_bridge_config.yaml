@@ -5,61 +5,61 @@
   direction: ROS_TO_GZ
 
 - ros_topic_name: "/autonomous_vehicle/left_camera/image"
-  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/left_camera/image"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_footprint/sensor/left_camera/image"
   ros_type_name: "sensor_msgs/msg/Image"
   gz_type_name: "gz.msgs.Image"
   direction: GZ_TO_ROS
   
 - ros_topic_name: "/autonomous_vehicle/right_camera/image"
-  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/right_camera/image"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_footprint/sensor/right_camera/image"
   ros_type_name: "sensor_msgs/msg/Image"
   gz_type_name: "gz.msgs.Image"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_front_bumper_center/scan"
-  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_front_bumper_center/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_footprint/sensor/sonar_front_bumper_center/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_front_bumper_left/scan"
-  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_front_bumper_left/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_footprint/sensor/sonar_front_bumper_left/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_front_bumper_right/scan"
-  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_front_bumper_right/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_footprint/sensor/sonar_front_bumper_right/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_left_side_bumper/scan"
-  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_left_side_bumper/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_footprint/sensor/sonar_left_side_bumper/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_right_side_bumper/scan"
-  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_right_side_bumper/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_footprint/sensor/sonar_right_side_bumper/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_rear_bumper_center/scan"
-  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_rear_bumper_center/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_footprint/sensor/sonar_rear_bumper_center/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_rear_bumper_left/scan"
-  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_rear_bumper_left/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_footprint/sensor/sonar_rear_bumper_left/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/sonar_rear_bumper_right/scan"
-  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/sonar_rear_bumper_right/scan"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_footprint/sensor/sonar_rear_bumper_right/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS
@@ -95,7 +95,7 @@
   direction: GZ_TO_ROS
 
 - ros_topic_name: "/sim/autonomous_vehicle/imu_sensor/imu"
-  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_link/sensor/imu_sensor/imu"
+  gz_topic_name: "/world/empty/model/autonomous_vehicle/link/base_footprint/sensor/imu_sensor/imu"
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"
   direction: GZ_TO_ROS
