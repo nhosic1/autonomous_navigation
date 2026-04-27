@@ -114,14 +114,6 @@ target_include_directories(pid_controller PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_link_libraries(pure_pursuit PUBLIC pid_controller)
 
-# add_executable(obstacle_detector src/perception/obstacle_detector.cpp)
-# target_link_libraries(obstacle_detector stereo_processing ${PCL_LIBRARIES})
-# target_include_directories(obstacle_detector PUBLIC
-#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-#   $<INSTALL_INTERFACE:include>)
-# target_compile_features(obstacle_detector PUBLIC c_std_99 cxx_std_17)
-# ament_target_dependencies(obstacle_detector rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV image_transport tf2 tf2_geometry_msgs pcl_conversions)
-
 add_executable(visual_odom_estimator src/localization/visual_odom_estimator.cpp)
 target_link_libraries(visual_odom_estimator stereo_processing localization ${PCL_LIBRARIES})
 target_include_directories(visual_odom_estimator PUBLIC
@@ -157,16 +149,6 @@ target_include_directories(state_monitor PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_compile_features(state_monitor PUBLIC c_std_99 cxx_std_17)
 ament_target_dependencies(state_monitor rclcpp std_msgs sensor_msgs cv_bridge OpenCV image_transport)
-
-if (NOT BUILD_RPI)
-  add_executable(path_follower src/control/path_follower.cpp)
-  target_link_libraries(path_follower pure_pursuit)
-  target_include_directories(path_follower PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>)
-  target_compile_features(path_follower PUBLIC c_std_99 cxx_std_17)
-  ament_target_dependencies(path_follower rclcpp std_msgs sensor_msgs nav_msgs message_filters OpenCV tf2 tf2_geometry_msgs tf2_ros)
-endif()
 
 add_executable(localization_initializer src/localization/localization_initializer.cpp)
 target_include_directories(localization_initializer PUBLIC
@@ -268,7 +250,6 @@ install(TARGETS pure_pursuit
   RUNTIME DESTINATION bin
 )
 
-# install(TARGETS obstacle_detector DESTINATION lib/${PROJECT_NAME})
 install(TARGETS visual_odom_estimator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_camera_calibrator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_viewer DESTINATION lib/${PROJECT_NAME})
@@ -285,8 +266,6 @@ if(BUILD_RPI)
 endif()
 
 if(NOT BUILD_RPI)
-  install(TARGETS path_follower DESTINATION lib/${PROJECT_NAME})
-
   install(PROGRAMS
     scripts/state_monitor.py
     DESTINATION lib/${PROJECT_NAME}
