@@ -5,15 +5,30 @@
 
 namespace loc
 {
-    void filter_points_with_RANSAC(const std::vector<cv::Point2d> &points_1, const std::vector<cv::Point2d> &points_2, const cv::Mat &camera_matrix, std::vector<cv::Point2d> &points_1_filtered, std::vector<cv::Point2d> &points_2_filtered, double confidence, double reproj_threshold)
+    void apply_essential_matrix_ransac_filter(const std::vector<cv::Point2d> &points_1, const std::vector<cv::Point2d> &points_2, const cv::Mat &camera_matrix, std::vector<cv::Point2d> &points_1_filtered, std::vector<cv::Point2d> &points_2_filtered, double confidence, double reproj_threshold)
     {
         // Use RANSAC to compute the essential matrix and filter outliers
         std::vector<uchar> inliers_mask;
+
+        if (points_1.size() < 5 || points_2.size() < 5)
+        {
+            points_1_filtered = points_1;
+            points_2_filtered = points_2;
+            return;
+        }
+
         cv::Mat E = cv::findEssentialMat(points_1, points_2, camera_matrix, cv::RANSAC, confidence, reproj_threshold, inliers_mask);
 
         // Clear the output vectors before filling them
         points_1_filtered.clear();
         points_2_filtered.clear();
+
+        if (E.empty() || inliers_mask.size() != points_1.size())
+        {
+            points_1_filtered = points_1;
+            points_2_filtered = points_2;
+            return;
+        }
 
         // Filter points based on the inliers mask
         for (size_t i = 0; i < points_1.size(); i++)
@@ -77,9 +92,8 @@ namespace loc
         pose_estimate.quality.matched_count = points_2.size();
 
         // Apply RANSAC with essential matrix as fitting model
-        std::vector<cv::Point2d> &points_2D_matched_prev = points_1, &points_2D_matched = points_2;
-
-        // filter_points_with_RANSAC(points_1, points_2, camera_matrix, points_2D_matched_prev, points_2D_matched);
+        std::vector<cv::Point2d> points_2D_matched_prev, points_2D_matched;
+        apply_essential_matrix_ransac_filter(points_1, points_2, camera_matrix, points_2D_matched_prev, points_2D_matched);
 
         // Convert 3D points from Point3d to Point3f (required by cv::projectPoints())
         std::vector<cv::Point3f> points_3D_f;
