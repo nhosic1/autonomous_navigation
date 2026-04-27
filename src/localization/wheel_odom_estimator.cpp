@@ -1,57 +1,166 @@
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/bool.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Transform.h>
+#include <tf2/exceptions.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 #include <unordered_map>
+#include <cmath>
+#include <limits>
 #include "autonomous_navigation/common/vehicle_constants.hpp"
 
 class WheelOdometryEstimator : public rclcpp::Node
 {
 public:
-    WheelOdometryEstimator() : Node("wheel_odom_estimator"), last_time_(this->now()), x_(0.0), y_(0.0), theta_(0.0), reset_odom_(false)
+    WheelOdometryEstimator() : Node("wheel_odom_estimator"), last_time_(this->now()), x_(0.0), y_(0.0), theta_(0.0)
     {
-        std::cout << "Initializing!" << std::endl;
         odom_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>("/autonomous_vehicle/odometry/wheel", 10);
+        twist_publisher_ = this->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>("/autonomous_vehicle/twist/wheel", 10);
+
+        tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
         joint_state_subscription_ = this->create_subscription<sensor_msgs::msg::JointState>(
             "/joint_states", 10,
             std::bind(&WheelOdometryEstimator::joint_state_callback, this, std::placeholders::_1));
 
-        reset_odom_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
-            "reset_odom", 1,
-            [this](const std_msgs::msg::Bool::SharedPtr msg)
-            {
-                if (msg->data)
-                {
-                    reset_odom_ = true;
-                    x_ = 0.0;
-                    y_ = 0.0;
-                    theta_ = 0.0;
-                    last_time_ = this->now();
-
-                    RCLCPP_INFO(this->get_logger(), "Wheel odometry is reset.");
-                }
-            });
+        reset_pose_subscription_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+            "/localization/reset_pose", 10,
+            std::bind(&WheelOdometryEstimator::reset_pose_callback, this, std::placeholders::_1));
     }
 
 private:
+    void set_rear_axle_odometry_state(const tf2::Transform &T_odom_rear_axle)
+    {
+        x_ = T_odom_rear_axle.getOrigin().x();
+        y_ = T_odom_rear_axle.getOrigin().y();
+        z_ = T_odom_rear_axle.getOrigin().z();
+
+        double roll, pitch;
+        T_odom_rear_axle.getBasis().getRPY(roll, pitch, theta_);
+        rear_axle_odometry_initialized_ = true;
+        last_time_ = this->now();
+    }
+
+    void initialize_rear_axle_odometry_state()
+    {
+        set_rear_axle_odometry_state(T_base_footprint_rear_axle_);
+    }
+
+    bool initialize_rear_axle_transform()
+    {
+        try
+        {
+            const geometry_msgs::msg::TransformStamped T_base_footprint_rear_axle_msg =
+                tf_buffer_->lookupTransform("base_footprint", "rear_axle", tf2::TimePointZero, tf2::durationFromSec(0.1));
+            tf2::fromMsg(T_base_footprint_rear_axle_msg.transform, T_base_footprint_rear_axle_);
+            rear_axle_transform_initialized_ = true;
+            return true;
+        }
+        catch (const tf2::TransformException &ex)
+        {
+            (void)ex;
+            return false;
+        }
+    }
+
+    void publish_reset_odometry()
+    {
+        tf2::Quaternion q_odom_rear_axle;
+        q_odom_rear_axle.setRPY(0.0, 0.0, theta_);
+        q_odom_rear_axle.normalize();
+
+        tf2::Transform T_odom_rear_axle;
+        T_odom_rear_axle.setOrigin(tf2::Vector3(x_, y_, z_));
+        T_odom_rear_axle.setRotation(q_odom_rear_axle);
+
+        const tf2::Transform T_odom_base_footprint =
+            T_odom_rear_axle * T_base_footprint_rear_axle_.inverse();
+
+        nav_msgs::msg::Odometry odom;
+        odom.header.stamp = this->now();
+        odom.header.frame_id = "odom";
+        odom.child_frame_id = "base_footprint";
+        odom.pose.pose.position.x = T_odom_base_footprint.getOrigin().x();
+        odom.pose.pose.position.y = T_odom_base_footprint.getOrigin().y();
+        odom.pose.pose.position.z = T_odom_base_footprint.getOrigin().z();
+        odom.pose.pose.orientation = tf2::toMsg(T_odom_base_footprint.getRotation());
+        odom.pose.covariance = {
+            0.2, 0, 0, 0, 0, 0,
+            0, 0.2, 0, 0, 0, 0,
+            0, 0, 9999, 0, 0, 0,
+            0, 0, 0, 9999, 0, 0,
+            0, 0, 0, 0, 9999, 0,
+            0, 0, 0, 0, 0, 0.3
+        };
+        odom.twist.covariance = {
+            0.2, 0, 0, 0, 0, 0,
+            0, 0.2, 0, 0, 0, 0,
+            0, 0, 9999, 0, 0, 0,
+            0, 0, 0, 9999, 0, 0,
+            0, 0, 0, 0, 9999, 0,
+            0, 0, 0, 0, 0, 0.3
+        };
+        odom_publisher_->publish(odom);
+
+        geometry_msgs::msg::TwistWithCovarianceStamped twist;
+        twist.header.stamp = odom.header.stamp;
+        twist.header.frame_id = odom.child_frame_id;
+        twist.twist = odom.twist;
+        twist_publisher_->publish(twist);
+    }
+
+    void reset_pose_callback(const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr &msg)
+    {
+        if (!rear_axle_transform_initialized_ && !initialize_rear_axle_transform()) {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Wheel odometry reset skipped because base_footprint -> rear_axle is unavailable.");
+            return;
+        }
+
+        tf2::Transform T_odom_base_footprint;
+        tf2::fromMsg(msg->pose.pose, T_odom_base_footprint);
+        set_rear_axle_odometry_state(T_odom_base_footprint * T_base_footprint_rear_axle_);
+        publish_reset_odometry();
+
+        RCLCPP_INFO(this->get_logger(), "Wheel odometry hard-reset to localization reset pose.");
+    }
+
     void joint_state_callback(const sensor_msgs::msg::JointState::ConstSharedPtr &msg)
     {
+        if (!rear_axle_transform_initialized_ && !initialize_rear_axle_transform()) {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(),
+                *this->get_clock(),
+                2000,
+                "Waiting for required static transform base_footprint -> rear_axle.");
+            return;
+        }
+
+        if (!rear_axle_odometry_initialized_) {
+            initialize_rear_axle_odometry_state();
+        }
+
         // Time since last update
         rclcpp::Time now = this->now();
         double dt = (now - last_time_).seconds();
 
         if (dt < 0.03)
-            return;  // Skip processing
-            
+            return; // Skip processing
+
         std::unordered_map<std::string, double> positions, velocities;
         for (size_t i = 0; i < msg->name.size(); ++i)
         {
             if (i < msg->position.size())
-            positions[msg->name[i]] = msg->position[i];
+                positions[msg->name[i]] = msg->position[i];
             if (i < msg->velocity.size())
-            velocities[msg->name[i]] = msg->velocity[i];
+                velocities[msg->name[i]] = msg->velocity[i];
         }
 
         // Required joints for steering and driving
@@ -69,91 +178,140 @@ private:
         }
 
         // Convert rear wheel angular velocities to linear velocity of rear axle midpoint
-        double v_L = velocities[rl_wheel] * WHEEL_RADIUS;
-        double v_R = velocities[rr_wheel] * WHEEL_RADIUS;
-        double v = (v_L + v_R) / 2.0;
+        const double v_L = velocities[rl_wheel] * WHEEL_RADIUS;
+        const double v_R = velocities[rr_wheel] * WHEEL_RADIUS;
+        const double v = (v_L + v_R) / 2.0;
 
-        std::cout << "Received joint state: " << std::endl;
-        std::cout << "v_L: " << v_L << ", v_R: " << v_R << ", v: " << v << std::endl;
+        const double delta_L = positions[fl_steer];
+        const double delta_R = positions[fr_steer];
+
+        if (!std::isfinite(v_L) || !std::isfinite(v_R) ||
+            !std::isfinite(delta_L) || !std::isfinite(delta_R))
+        {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000,
+                "Invalid wheel odometry joint data: v_L=%f, v_R=%f, delta_L=%f, delta_R=%f",
+                v_L, v_R, delta_L, delta_R);
+            return;
+        }
 
         double R;
 
         // Compute turning radius of rear axle midpoint
-        if (std::abs(positions[fl_steer]) < 1e-6 || std::abs(positions[fr_steer]) < 1e-6)
+        if (std::abs(delta_L) < 1e-6 && std::abs(delta_R) < 1e-6)
         {
             R = std::numeric_limits<double>::infinity();
         }
         else
         {
-            double R_L_kingpin = WHEEL_BASE / std::tan(positions[fl_steer]);
-            double R_R_kingpin = WHEEL_BASE / std::tan(positions[fr_steer]);
-            R = (R_L_kingpin + R_R_kingpin) / 2.0;
-
-            std::cout << "fl_steer: " << positions[fl_steer] << ", fr_steer: " << positions[fr_steer] << std::endl;
-            std::cout << "R_L_kingpin: " << R_L_kingpin << ", R_R_kingpin: " << R_R_kingpin << ", R: " << R << std::endl;
+            const double R_L = WHEEL_BASE / std::tan(delta_L);
+            const double R_R = WHEEL_BASE / std::tan(delta_R);
+            R = (R_L + R_R) / 2.0;
         }
 
         // Angular velocity of rear axle midpoint
-        double omega = v / R;
+        const double omega = v / R;
 
-        std::cout << "w_L: " << velocities[rl_wheel] << ", w_R: " << velocities[rr_wheel] << ", w: " << omega << std::endl;
+        if (!std::isfinite(v) || !std::isfinite(omega))
+        {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000,
+                "Invalid wheel odometry motion estimate: v=%f, omega=%f",
+                v, omega);
+            return;
+        }
+
+        const double dtheta = omega * dt;
         
-        // Integrate pose using velocity and orientation
-        double dx = v * std::cos(theta_) * dt;
-        double dy = v * std::sin(theta_) * dt;
-        double dtheta = omega * dt;
+        // Integrate rear_axle pose in odom frame using the RK2 method.
+        const double theta_mid = theta_ + 0.5 * dtheta;
+        const double dx = v * std::cos(theta_mid) * dt;
+        const double dy = v * std::sin(theta_mid) * dt;
 
         x_ += dx;
         y_ += dy;
         theta_ += dtheta;
 
-        // Fill and publish odometry message
-        tf2::Quaternion q;
-        q.setRPY(0.0, 0.0, theta_);
-        geometry_msgs::msg::Quaternion odom_quat = tf2::toMsg(q);
+        tf2::Quaternion q_odom_rear_axle;
+        q_odom_rear_axle.setRPY(0.0, 0.0, theta_);
+        q_odom_rear_axle.normalize();
+
+        tf2::Transform T_odom_rear_axle;
+        T_odom_rear_axle.setOrigin(tf2::Vector3(x_, y_, z_));
+        T_odom_rear_axle.setRotation(q_odom_rear_axle);
+
+        const tf2::Transform T_rear_axle_base_footprint = T_base_footprint_rear_axle_.inverse();
+        const tf2::Transform T_odom_base_footprint = T_odom_rear_axle * T_rear_axle_base_footprint;
 
         nav_msgs::msg::Odometry odom;
         odom.header.stamp = now;
         odom.header.frame_id = "odom";
-        odom.child_frame_id = "rear_axle";
+        odom.child_frame_id = "base_footprint";
 
-        odom.pose.pose.position.x = x_;
-        odom.pose.pose.position.y = y_;
-        odom.pose.pose.position.z = 0.0;
-        odom.pose.pose.orientation = odom_quat;
+        odom.pose.pose.position.x = T_odom_base_footprint.getOrigin().x();
+        odom.pose.pose.position.y = T_odom_base_footprint.getOrigin().y();
+        odom.pose.pose.position.z = T_odom_base_footprint.getOrigin().z();
+        odom.pose.pose.orientation = tf2::toMsg(T_odom_base_footprint.getRotation());
         odom.pose.covariance = {
-            0.2, 0, 0, 0, 0, 0, // x
+            0.2, 0, 0, 0, 0, 0,  // x
             0, 0.2, 0, 0, 0, 0,  // y
             0, 0, 9999, 0, 0, 0, // z
             0, 0, 0, 9999, 0, 0, // roll
             0, 0, 0, 0, 9999, 0, // pitch
-            0, 0, 0, 0, 0, 0.3  // yaw
+            0, 0, 0, 0, 0, 0.3   // yaw
         };
 
-        odom.twist.twist.linear.x = v;
-        odom.twist.twist.linear.y = 0.0;
-        odom.twist.twist.angular.z = omega;
+        const tf2::Vector3 v_rear_axle_rear_axle(v, 0.0, 0.0);
+        const tf2::Vector3 w_rear_axle_rear_axle(0.0, 0.0, omega);
+        const tf2::Matrix3x3 R_base_footprint_rear_axle = T_base_footprint_rear_axle_.getBasis();
+        const tf2::Vector3 p_base_footprint_rear_axle = T_base_footprint_rear_axle_.getOrigin();
+        const tf2::Vector3 v_rear_axle_base_footprint = R_base_footprint_rear_axle * v_rear_axle_rear_axle;
+        const tf2::Vector3 w_base_footprint_base_footprint = R_base_footprint_rear_axle * w_rear_axle_rear_axle;
+
+        // Rigid-body velocity relation between two points:
+        // v_rear = v_base + w x p_base->rear  =>  v_base = v_rear - w x p_base->rear
+        const tf2::Vector3 v_base_footprint_base_footprint =
+            v_rear_axle_base_footprint - w_base_footprint_base_footprint.cross(p_base_footprint_rear_axle);
+
+        odom.twist.twist.linear.x = v_base_footprint_base_footprint.x();
+        odom.twist.twist.linear.y = v_base_footprint_base_footprint.y();
+        odom.twist.twist.linear.z = v_base_footprint_base_footprint.z();
+        odom.twist.twist.angular.x = w_base_footprint_base_footprint.x();
+        odom.twist.twist.angular.y = w_base_footprint_base_footprint.y();
+        odom.twist.twist.angular.z = w_base_footprint_base_footprint.z();
         odom.twist.covariance = {
-            0.2, 0, 0, 0, 0, 0, // v_x
+            0.2, 0, 0, 0, 0, 0,  // v_x
             0, 0.2, 0, 0, 0, 0,  // v_y
             0, 0, 9999, 0, 0, 0, // v_z
             0, 0, 0, 9999, 0, 0, // w_x
             0, 0, 0, 0, 9999, 0, // w_y
-            0, 0, 0, 0, 0, 0.3  // w_z
+            0, 0, 0, 0, 0, 0.3   // w_z
         };
 
         odom_publisher_->publish(odom);
+
+        geometry_msgs::msg::TwistWithCovarianceStamped twist;
+        twist.header.stamp = now;
+        twist.header.frame_id = odom.child_frame_id;
+        twist.twist = odom.twist;
+        twist_publisher_->publish(twist);
 
         last_time_ = now;
     }
 
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_publisher_;
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_subscription_;
-    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr reset_odom_subscription_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr reset_pose_subscription_;
+    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
     rclcpp::Time last_time_;
+    tf2::Transform T_base_footprint_rear_axle_ = tf2::Transform::getIdentity();
+    bool rear_axle_transform_initialized_ = false;
+    bool rear_axle_odometry_initialized_ = false;
+    double z_ = 0.0;
     double x_, y_, theta_;
-    bool reset_odom_;
 };
 
 int main(int argc, char **argv)

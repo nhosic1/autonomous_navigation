@@ -33,6 +33,7 @@ find_package(nav2_costmap_2d REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(pluginlib REQUIRED)
+find_package(robot_localization REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common filters)
 find_package(pcl_conversions REQUIRED)
 
@@ -113,21 +114,13 @@ target_include_directories(pid_controller PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_link_libraries(pure_pursuit PUBLIC pid_controller)
 
-# add_executable(obstacle_detector src/perception/obstacle_detector.cpp)
-# target_link_libraries(obstacle_detector stereo_processing ${PCL_LIBRARIES})
-# target_include_directories(obstacle_detector PUBLIC
-#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-#   $<INSTALL_INTERFACE:include>)
-# target_compile_features(obstacle_detector PUBLIC c_std_99 cxx_std_17)
-# ament_target_dependencies(obstacle_detector rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV image_transport tf2 tf2_geometry_msgs pcl_conversions)
-
 add_executable(visual_odom_estimator src/localization/visual_odom_estimator.cpp)
 target_link_libraries(visual_odom_estimator stereo_processing localization ${PCL_LIBRARIES})
 target_include_directories(visual_odom_estimator PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(visual_odom_estimator PUBLIC c_std_99 cxx_std_17)
-ament_target_dependencies(visual_odom_estimator rclcpp std_msgs sensor_msgs nav_msgs message_filters cv_bridge OpenCV ament_index_cpp image_transport tf2 tf2_geometry_msgs pcl_conversions)
+ament_target_dependencies(visual_odom_estimator rclcpp std_msgs sensor_msgs nav_msgs geometry_msgs message_filters cv_bridge OpenCV ament_index_cpp image_transport tf2 tf2_geometry_msgs tf2_ros pcl_conversions)
 
 if(BUILD_RPI)
   add_executable(frame_publisher src/localization/frame_publisher.cpp)
@@ -157,16 +150,6 @@ target_include_directories(state_monitor PUBLIC
 target_compile_features(state_monitor PUBLIC c_std_99 cxx_std_17)
 ament_target_dependencies(state_monitor rclcpp std_msgs sensor_msgs cv_bridge OpenCV image_transport)
 
-if (NOT BUILD_RPI)
-  add_executable(path_follower src/control/path_follower.cpp)
-  target_link_libraries(path_follower pure_pursuit)
-  target_include_directories(path_follower PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>)
-  target_compile_features(path_follower PUBLIC c_std_99 cxx_std_17)
-  ament_target_dependencies(path_follower rclcpp std_msgs sensor_msgs nav_msgs message_filters OpenCV tf2 tf2_geometry_msgs tf2_ros)
-endif()
-
 add_executable(localization_initializer src/localization/localization_initializer.cpp)
 target_include_directories(localization_initializer PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -176,6 +159,7 @@ ament_target_dependencies(localization_initializer
   geometry_msgs
   nav2_msgs
   rclcpp
+  robot_localization
   sensor_msgs
   std_msgs
   tf2
@@ -187,7 +171,14 @@ target_include_directories(wheel_odom_estimator PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(wheel_odom_estimator PUBLIC c_std_99 cxx_std_17)
-ament_target_dependencies(wheel_odom_estimator rclcpp std_msgs sensor_msgs nav_msgs tf2 tf2_geometry_msgs)
+ament_target_dependencies(wheel_odom_estimator rclcpp sensor_msgs nav_msgs geometry_msgs tf2 tf2_geometry_msgs tf2_ros)
+
+add_executable(gazebo_odom_aligner src/localization/gazebo_odom_aligner.cpp)
+target_include_directories(gazebo_odom_aligner PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(gazebo_odom_aligner PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(gazebo_odom_aligner rclcpp nav_msgs geometry_msgs tf2 tf2_geometry_msgs tf2_ros)
 
 add_executable(joint_controller src/control/joint_controller.cpp)
 target_include_directories(joint_controller PUBLIC
@@ -259,13 +250,13 @@ install(TARGETS pure_pursuit
   RUNTIME DESTINATION bin
 )
 
-# install(TARGETS obstacle_detector DESTINATION lib/${PROJECT_NAME})
 install(TARGETS visual_odom_estimator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_camera_calibrator DESTINATION lib/${PROJECT_NAME})
 install(TARGETS stereo_viewer DESTINATION lib/${PROJECT_NAME})
 install(TARGETS state_monitor DESTINATION lib/${PROJECT_NAME})
 install(TARGETS localization_initializer DESTINATION lib/${PROJECT_NAME})
 install(TARGETS wheel_odom_estimator DESTINATION lib/${PROJECT_NAME})
+install(TARGETS gazebo_odom_aligner DESTINATION lib/${PROJECT_NAME})
 install(TARGETS joint_controller DESTINATION lib/${PROJECT_NAME})
 install(TARGETS nav_cmd_gate DESTINATION lib/${PROJECT_NAME})
 install(TARGETS sensor_message_normalizer DESTINATION lib/${PROJECT_NAME})
@@ -275,8 +266,6 @@ if(BUILD_RPI)
 endif()
 
 if(NOT BUILD_RPI)
-  install(TARGETS path_follower DESTINATION lib/${PROJECT_NAME})
-
   install(PROGRAMS
     scripts/state_monitor.py
     DESTINATION lib/${PROJECT_NAME}
