@@ -27,7 +27,7 @@ local_costmap:
       width: 4
       height: 4
       resolution: 0.0666667
-      footprint: "[ [0.505, 0.31], [0.505, -0.31], [-0.505, -0.31], [-0.505, 0.31] ]"
+      footprint: "[ [0.47, 0.22], [0.47, -0.22], [-0.47, -0.22], [-0.47, 0.22] ]"
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -153,7 +153,7 @@ global_costmap:
       publish_frequency: 10.0
       global_frame: map
       robot_base_frame: base_footprint
-      footprint: "[ [0.505, 0.31], [0.505, -0.31], [-0.505, -0.31], [-0.505, 0.31] ]"
+      footprint: "[ [0.47, 0.22], [0.47, -0.22], [-0.47, -0.22], [-0.47, 0.22] ]"
       resolution: 0.0666667
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -280,7 +280,7 @@ planner_server:
       analytic_expansion_max_length: 3.0
       analytic_expansion_max_cost: 200.0
       analytic_expansion_max_cost_override: false
-      minimum_turning_radius: 1.15
+      minimum_turning_radius: 0.985
       reverse_penalty: 2.0
       change_penalty: 0.0
       non_straight_penalty: 1.2
