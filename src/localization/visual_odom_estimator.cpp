@@ -15,7 +15,6 @@
 #include <filesystem>
 #include <cmath>
 #include <chrono>
-#include <algorithm>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Transform.h>
@@ -135,18 +134,6 @@ private:
     {
         rvec_guess_ = cv::Mat::zeros(3, 1, CV_64F);
         tvec_guess_ = cv::Mat::zeros(3, 1, CV_64F);
-    }
-
-    double compute_rotation_angle(const cv::Mat &rvec) const
-    {
-        cv::Mat R_cv;
-        cv::Rodrigues(rvec, R_cv);
-
-        const double trace = R_cv.at<double>(0, 0) + R_cv.at<double>(1, 1) + R_cv.at<double>(2, 2);
-        double cos_angle = (trace - 1.0) * 0.5;
-        cos_angle = std::max(-1.0, std::min(1.0, cos_angle));
-
-        return std::acos(cos_angle);
     }
 
     bool initialize_static_transforms()
@@ -429,8 +416,8 @@ private:
     {
         const loc::PoseEstimateQuality &quality = pose_estimate.quality;
         const double t_norm = cv::norm(pose_estimate.tvec);
-        const double r_norm = compute_rotation_angle(pose_estimate.rvec);
-        constexpr int min_pnp_inliers = 15;
+        const double r_norm = cv::norm(pose_estimate.rvec);
+        constexpr int min_pnp_inliers = 20;
         constexpr double min_pnp_inlier_ratio = 0.35;
         constexpr double max_pnp_reprojection_rmse = 4.0;
         constexpr double max_pnp_reprojection_error = 12.0;
@@ -587,7 +574,7 @@ private:
             }
 
             double t_norm = cv::norm(pose_estimate.tvec); // unit: [m]
-            double r_norm = compute_rotation_angle(pose_estimate.rvec); // unit: [rad]
+            double r_norm = cv::norm(pose_estimate.rvec); // unit: [rad]
 
             if (!is_pose_estimate_valid(pose_estimate))
             {
