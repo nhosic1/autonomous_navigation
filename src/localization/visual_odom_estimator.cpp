@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <cmath>
 #include <chrono>
+#include <algorithm>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Transform.h>
@@ -136,6 +137,18 @@ private:
         tvec_guess_ = cv::Mat::zeros(3, 1, CV_64F);
     }
 
+    double compute_rotation_angle(const cv::Mat &rvec) const
+    {
+        cv::Mat R_cv;
+        cv::Rodrigues(rvec, R_cv);
+
+        const double trace = R_cv.at<double>(0, 0) + R_cv.at<double>(1, 1) + R_cv.at<double>(2, 2);
+        double cos_angle = (trace - 1.0) * 0.5;
+        cos_angle = std::max(-1.0, std::min(1.0, cos_angle));
+
+        return std::acos(cos_angle);
+    }
+
     bool initialize_static_transforms()
     {
         try
@@ -186,8 +199,8 @@ private:
 
     void update_reference_state(const std::vector<cv::KeyPoint> &keypoints_L,
                                 const cv::Mat &descriptors_L,
-                                const std::vector<cv::Point2d> &points_2D_stereo_filtered,
-                                const std::vector<cv::Point3d> &points_3D_stereo_filtered,
+                                const std::vector<cv::Point2d> &points_2D_stereo,
+                                const std::vector<cv::Point3d> &points_3D_stereo,
                                 const cv::Mat &left_img,
                                 const cv::Mat &right_img,
                                 const rclcpp::Time &timestamp,
@@ -196,8 +209,8 @@ private:
     {
         keypoints_L_prev_ = keypoints_L;
         descriptors_L_prev_ = descriptors_L;
-        points_2D_stereo_prev_ = points_2D_stereo_filtered;
-        points_3D_stereo_prev_ = points_3D_stereo_filtered;
+        points_2D_stereo_prev_ = points_2D_stereo;
+        points_3D_stereo_prev_ = points_3D_stereo;
         keyframe_L_prev_ = left_img;
         keyframe_R_prev_ = right_img;
         timestamp_prev_ = timestamp;
@@ -352,13 +365,10 @@ private:
                                    const cv::Mat &descriptors_L,
                                    const std::vector<cv::KeyPoint> &keypoints_R,
                                    const cv::Mat &descriptors_R,
-                                   std::vector<cv::Point2d> &points_2D_stereo_filtered,
-                                   std::vector<cv::Point3d> &points_3D_stereo_filtered,
+                                   std::vector<cv::Point2d> &points_2D_stereo,
+                                   std::vector<cv::Point3d> &points_3D_stereo,
                                    double &average_depth)
     {
-        std::vector<cv::Point3d> points_3D_stereo;
-        std::vector<cv::Point2d> points_2D_stereo;
-
         bool success = sp::compute_3D_points_from_features(
             matcher_, P_L_, keypoints_L, descriptors_L, P_R_, keypoints_R, descriptors_R,
             points_3D_stereo, points_2D_stereo, average_depth);
@@ -386,26 +396,6 @@ private:
         outrem.setMinNeighborsInRadius(3);
         outrem.filter(*cloud_filtered);
 
-        pcl::IndicesConstPtr removed_indices = outrem.getRemovedIndices();
-
-        std::vector<bool> outlier_mask(cloud->size(), false);
-        for (size_t i : *removed_indices)
-        {
-            if (i < outlier_mask.size())
-            {
-                outlier_mask[i] = true;
-            }
-        }
-
-        for (size_t i = 0; i < points_2D_stereo.size(); ++i)
-        {
-            if (!outlier_mask[i])
-            {
-                points_2D_stereo_filtered.push_back(points_2D_stereo[i]);
-                points_3D_stereo_filtered.push_back(points_3D_stereo[i]);
-            }
-        }
-
         sensor_msgs::msg::PointCloud2 point_cloud_msg = convert_to_PointCloud2_msg(cloud_filtered, "left_camera");
         point_cloud_publisher_->publish(point_cloud_msg);
 
@@ -416,8 +406,8 @@ private:
     {
         const loc::PoseEstimateQuality &quality = pose_estimate.quality;
         const double t_norm = cv::norm(pose_estimate.tvec);
-        const double r_norm = cv::norm(pose_estimate.rvec);
-        constexpr int min_pnp_inliers = 20;
+        const double r_norm = compute_rotation_angle(pose_estimate.rvec);
+        constexpr int min_pnp_inliers = 10;
         constexpr double min_pnp_inlier_ratio = 0.35;
         constexpr double max_pnp_reprojection_rmse = 4.0;
         constexpr double max_pnp_reprojection_error = 12.0;
@@ -500,8 +490,8 @@ private:
         orb_->detectAndCompute(right_img, cv::Mat(), keypoints_R, descriptors_R);
 
         // Build stereo observations
-        std::vector<cv::Point3d> points_3D_stereo_filtered;
-        std::vector<cv::Point2d> points_2D_stereo_filtered;
+        std::vector<cv::Point3d> points_3D_stereo;
+        std::vector<cv::Point2d> points_2D_stereo;
         double average_depth = 0.0;
 
         if (descriptors_L.empty() || descriptors_R.empty())
@@ -515,7 +505,7 @@ private:
         {
             try
             {
-                if (!build_stereo_observations(keypoints_L, descriptors_L, keypoints_R, descriptors_R, points_2D_stereo_filtered, points_3D_stereo_filtered, average_depth))
+                if (!build_stereo_observations(keypoints_L, descriptors_L, keypoints_R, descriptors_R, points_2D_stereo, points_3D_stereo, average_depth))
                 {
                     RCLCPP_ERROR(this->get_logger(), "Visual odometry chain is broken: failed to compute 3D points. Restarting visual odometry.");
 
@@ -574,7 +564,7 @@ private:
             }
 
             double t_norm = cv::norm(pose_estimate.tvec); // unit: [m]
-            double r_norm = cv::norm(pose_estimate.rvec); // unit: [rad]
+            double r_norm = compute_rotation_angle(pose_estimate.rvec); // unit: [rad]
 
             if (!is_pose_estimate_valid(pose_estimate))
             {
@@ -589,8 +579,7 @@ private:
                     pose_estimate.quality.reprojection_max_error,
                     t_norm,
                     r_norm * 180.0 / CV_PI);
-                RCLCPP_ERROR(this->get_logger(), "Visual odometry chain is broken: pose quality gate rejected the local pose. Restarting visual odometry.");
-                handle_visual_odometry_failure(left_img, left_img_msg_ptr->header.stamp);
+                RCLCPP_WARN(this->get_logger(), "Visual odometry update skipped: pose quality gate rejected the local pose. Keeping the previous keyframe.");
                 return;
             }
 
@@ -604,7 +593,7 @@ private:
             // Keyframe slection
             if ((((t_norm / average_depth) > 0.07 || r_norm > 5 * CV_PI / 180)) && t_norm > 0.05)
             {
-                update_reference_state(keypoints_L, descriptors_L, points_2D_stereo_filtered, points_3D_stereo_filtered, left_img, right_img, timestamp, odom_msg, T_odom_left_camera);
+                update_reference_state(keypoints_L, descriptors_L, points_2D_stereo, points_3D_stereo, left_img, right_img, timestamp, odom_msg, T_odom_left_camera);
             }
         }
         else
@@ -627,7 +616,7 @@ private:
             }
 
             initialize_visual_odometry(T_odom_base_footprint, timestamp, odom_msg);
-            update_reference_state(keypoints_L, descriptors_L, points_2D_stereo_filtered, points_3D_stereo_filtered, left_img, right_img, timestamp, odom_msg, T_odom_left_camera_prev_);
+            update_reference_state(keypoints_L, descriptors_L, points_2D_stereo, points_3D_stereo, left_img, right_img, timestamp, odom_msg, T_odom_left_camera_prev_);
             bootstrap_complete_ = true;
             bootstrap_from_reset_pose_ = false;
         }

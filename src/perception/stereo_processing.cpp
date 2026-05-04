@@ -398,7 +398,7 @@ namespace sp
         }
 
         // Filter matches using Lowe's ratio test
-        const float ratio_threshold = 0.75f;
+        const float ratio_threshold = 0.80f;
         std::set<int> unique_train_ids;
         std::vector<cv::Point2f> points_L, points_R;
 
@@ -410,7 +410,7 @@ namespace sp
                 cv::Point2f pt_R = keypoints_R[matches[i][0].trainIdx].pt;
 
                 // Check if y-coordinates are approximately equal, minimum stereo disparity is 7 and match is 1-to-1
-                if (std::abs(pt_L.y - pt_R.y) < 1.0 && (pt_L.x - pt_R.x >= 7.0) && unique_train_ids.insert(matches[i][0].trainIdx).second)
+                if (std::abs(pt_L.y - pt_R.y) < 2.0 && (pt_L.x - pt_R.x >= 7.0) && unique_train_ids.insert(matches[i][0].trainIdx).second)
                 {
                     points_L.push_back(pt_L);
                     points_R.push_back(pt_R);
