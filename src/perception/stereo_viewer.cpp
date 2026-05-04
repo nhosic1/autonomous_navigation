@@ -137,8 +137,8 @@ private:
         {
             // Save frames
             std::string timestamp_str = std::to_string(timestamp.sec) + "_" + std::to_string(timestamp.nanosec);
-            std::string left_img_path = output_folder_L + "/img_" + timestamp_str + ".jpg";
-            std::string right_img_path = output_folder_R + "/img_" + timestamp_str + ".jpg";
+            std::string left_img_path = output_folder_L + "/img_" + timestamp_str + ".png";
+            std::string right_img_path = output_folder_R + "/img_" + timestamp_str + ".png";
 
             cv::imwrite(left_img_path, left_img);
             cv::imwrite(right_img_path, right_img);

@@ -18,6 +18,9 @@ int main(int argc, char **argv)
     node->declare_parameter<std::vector<int64_t>>("inner_corners", std::vector<int64_t>{});
     std::vector<int64_t> inner_corners = node->get_parameter("inner_corners").as_integer_array();
 
+    node->declare_parameter<double>("square_size", 0.021);
+    double square_size = node->get_parameter("square_size").as_double();
+
     node->declare_parameter<std::string>("output_folder", "");
     std::string output_dir = node->get_parameter("output_folder").as_string();
 
@@ -36,6 +39,12 @@ int main(int argc, char **argv)
     if (inner_corners.size() != 2 || inner_corners[0] <= 0 || inner_corners[1] <= 0)
     {
         RCLCPP_ERROR(node->get_logger(), "Parameter 'inner_corners' is invalid or not provided. It must be a pair of values > 0.");
+        parameter_error = true;
+    }
+
+    if (square_size <= 0.0)
+    {
+        RCLCPP_ERROR(node->get_logger(), "Parameter 'square_size' is invalid. It must be > 0 and specified in meters.");
         parameter_error = true;
     }
 
@@ -65,7 +74,7 @@ int main(int argc, char **argv)
 
     // 3D coordinates of chessboard corners (single image)
     std::vector<cv::Point3f> corners_3D;
-    float d = 0.021; // distance between corners in [m]
+    float d = static_cast<float>(square_size); // distance between corners in [m]
     for (int i = 0; i < inner_corners_h; i++)
     {
         for (int j = 0; j < inner_corners_v; j++)
@@ -73,8 +82,8 @@ int main(int argc, char **argv)
     }
 
     std::vector<cv::String> image_paths_L, image_paths_R;
-    std::string pattern_L = images_dir_L + "/*.jpg";
-    std::string pattern_R = images_dir_R + "/*.jpg";
+    std::string pattern_L = images_dir_L + "/*.png";
+    std::string pattern_R = images_dir_R + "/*.png";
 
     // Get paths to images
     cv::glob(pattern_L, image_paths_L);
@@ -154,10 +163,10 @@ int main(int argc, char **argv)
     RCLCPP_INFO(node->get_logger(), "Calibrating...");
 
     // Calibrate cameras
-    cv::calibrateCamera(all_corners_3D, all_corners_2D_L, cv::Size(image_gray_L.rows, image_gray_L.cols), camera_matrix_L, dist_coeffs_L, R_L, T_L);
+    cv::calibrateCamera(all_corners_3D, all_corners_2D_L, image_gray_L.size(), camera_matrix_L, dist_coeffs_L, R_L, T_L);
     opt_camera_matrix_L = cv::getOptimalNewCameraMatrix(camera_matrix_L, dist_coeffs_L, image_gray_L.size(), 1, image_gray_L.size(), 0);
 
-    cv::calibrateCamera(all_corners_3D, all_corners_2D_R, cv::Size(image_gray_R.rows, image_gray_R.cols), camera_matrix_R, dist_coeffs_R, R_R, T_R);
+    cv::calibrateCamera(all_corners_3D, all_corners_2D_R, image_gray_R.size(), camera_matrix_R, dist_coeffs_R, R_R, T_R);
     opt_camera_matrix_R = cv::getOptimalNewCameraMatrix(camera_matrix_R, dist_coeffs_R, image_gray_R.size(), 1, image_gray_R.size(), 0);
 
     // Compute re-projection error
