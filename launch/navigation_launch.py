@@ -10,8 +10,7 @@ def generate_launch_description():
     package_name = "autonomous_navigation"
     share_dir = get_package_share_directory(package_name)
 
-    # map_yaml_path = os.path.join(share_dir, "config", "warehouse_map.yaml")
-    map_yaml_path = os.path.join(share_dir, "config", "apartment_map.yaml")
+    map_yaml_path = os.path.join(share_dir, "config", "warehouse_map.yaml")
     nav2_params_path = os.path.join(share_dir, "config", "nav2_params.yaml")
     nav_to_pose_bt_xml_path = os.path.join(
         share_dir, "behavior_trees", "replan_on_goal_update_or_obstacle.xml"

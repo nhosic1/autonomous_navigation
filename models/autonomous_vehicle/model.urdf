@@ -21,13 +21,13 @@
   <link name="chassis">
     <visual>
       <geometry>
-        <box size="0.7 0.2 0.0465108"/>
+        <box size="0.7 0.25 0.12"/>
       </geometry>
       <material name="offwhite"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.7 0.2 0.0465108"/>
+        <box size="0.7 0.25 0.12"/>
       </geometry>
     </collision>
     <inertial>
@@ -39,13 +39,13 @@
   <link name="front_bumper_center">
     <visual>
       <geometry>
-        <box size="0.015 0.14 0.04"/>
+        <box size="0.03 0.34 0.07"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.015 0.14 0.04"/>
+        <box size="0.03 0.34 0.07"/>
       </geometry>
     </collision>
     <inertial>
@@ -57,13 +57,13 @@
   <link name="front_bumper_left">
     <visual>
       <geometry>
-        <box size="0.015 0.09 0.04"/>
+        <box size="0.03 0.14 0.07"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.015 0.09 0.04"/>
+        <box size="0.03 0.14 0.07"/>
       </geometry>
     </collision>
     <inertial>
@@ -75,13 +75,13 @@
   <link name="front_bumper_right">
     <visual>
       <geometry>
-        <box size="0.015 0.09 0.04"/>
+        <box size="0.03 0.14 0.07"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.015 0.09 0.04"/>
+        <box size="0.03 0.14 0.07"/>
       </geometry>
     </collision>
     <inertial>
@@ -93,13 +93,13 @@
   <link name="rear_bumper_center">
     <visual>
       <geometry>
-        <box size="0.015 0.14 0.04"/>
+        <box size="0.03 0.34 0.07"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.015 0.14 0.04"/>
+        <box size="0.03 0.34 0.07"/>
       </geometry>
     </collision>
     <inertial>
@@ -111,13 +111,13 @@
   <link name="rear_bumper_left">
     <visual>
       <geometry>
-        <box size="0.015 0.09 0.04"/>
+        <box size="0.03 0.14 0.07"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.015 0.09 0.04"/>
+        <box size="0.03 0.14 0.07"/>
       </geometry>
     </collision>
     <inertial>
@@ -129,13 +129,13 @@
   <link name="rear_bumper_right">
     <visual>
       <geometry>
-        <box size="0.015 0.09 0.04"/>
+        <box size="0.03 0.14 0.07"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.015 0.09 0.04"/>
+        <box size="0.03 0.14 0.07"/>
       </geometry>
     </collision>
     <inertial>
@@ -147,13 +147,13 @@
   <link name="left_side_bumper">
     <visual>
       <geometry>
-        <box size="0.34 0.015 0.04"/>
+        <box size="0.32 0.03 0.07"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.34 0.015 0.04"/>
+        <box size="0.32 0.03 0.07"/>
       </geometry>
     </collision>
     <inertial>
@@ -165,13 +165,13 @@
   <link name="right_side_bumper">
     <visual>
       <geometry>
-        <box size="0.34 0.015 0.04"/>
+        <box size="0.32 0.03 0.07"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.34 0.015 0.04"/>
+        <box size="0.32 0.03 0.07"/>
       </geometry>
     </collision>
     <inertial>
@@ -567,18 +567,18 @@
   <link name="front_left_wheel">
     <visual>
       <geometry>
-        <cylinder length="0.058866" radius="0.085"/>
+        <cylinder length="0.1" radius="0.1"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.058866" radius="0.085"/>
+        <cylinder length="0.1" radius="0.1"/>
       </geometry>
     </collision>
     <inertial>
       <mass value="1"/>
-      <inertia ixx="0.0021" ixy="0.0" ixz="0.0" iyy="0.0021" iyz="0.0" izz="0.0036"/>
+      <inertia ixx="0.0033" ixy="0.0" ixz="0.0" iyy="0.0033" iyz="0.0" izz="0.005"/>
     </inertial>
   </link>
   <gazebo reference="front_left_wheel">
@@ -590,18 +590,18 @@
   <link name="front_right_wheel">
     <visual>
       <geometry>
-        <cylinder length="0.058866" radius="0.085"/>
+        <cylinder length="0.1" radius="0.1"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.058866" radius="0.085"/>
+        <cylinder length="0.1" radius="0.1"/>
       </geometry>
     </collision>
     <inertial>
       <mass value="1"/>
-      <inertia ixx="0.0021" ixy="0.0" ixz="0.0" iyy="0.0021" iyz="0.0" izz="0.0036"/>
+      <inertia ixx="0.0033" ixy="0.0" ixz="0.0" iyy="0.0033" iyz="0.0" izz="0.005"/>
     </inertial>
   </link>
   <gazebo reference="front_right_wheel">
@@ -613,18 +613,18 @@
   <link name="rear_left_wheel">
     <visual>
       <geometry>
-        <cylinder length="0.058866" radius="0.085"/>
+        <cylinder length="0.1" radius="0.1"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.058866" radius="0.085"/>
+        <cylinder length="0.1" radius="0.1"/>
       </geometry>
     </collision>
     <inertial>
       <mass value="1"/>
-      <inertia ixx="0.0021" ixy="0.0" ixz="0.0" iyy="0.0021" iyz="0.0" izz="0.0036"/>
+      <inertia ixx="0.0033" ixy="0.0" ixz="0.0" iyy="0.0033" iyz="0.0" izz="0.005"/>
     </inertial>
   </link>
   <gazebo reference="rear_left_wheel">
@@ -636,18 +636,18 @@
   <link name="rear_right_wheel">
     <visual>
       <geometry>
-        <cylinder length="0.058866" radius="0.085"/>
+        <cylinder length="0.1" radius="0.1"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <cylinder length="0.058866" radius="0.085"/>
+        <cylinder length="0.1" radius="0.1"/>
       </geometry>
     </collision>
     <inertial>
       <mass value="1"/>
-      <inertia ixx="0.0021" ixy="0.0" ixz="0.0" iyy="0.0021" iyz="0.0" izz="0.0036"/>
+      <inertia ixx="0.0033" ixy="0.0" ixz="0.0" iyy="0.0033" iyz="0.0" izz="0.005"/>
     </inertial>
   </link>
   <gazebo reference="rear_right_wheel">
@@ -686,7 +686,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="-1.5707 0 0"/>
       <geometry>
-        <cylinder length="0.33" radius="0.02"/>
+        <cylinder length="0.44" radius="0.02"/>
       </geometry>
       <material name="white"/>
     </visual>
@@ -700,7 +700,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="-1.5707 0 0"/>
       <geometry>
-        <cylinder length="0.37" radius="0.02"/>
+        <cylinder length="0.52" radius="0.02"/>
       </geometry>
       <material name="white"/>
     </visual>
@@ -713,13 +713,13 @@
   <link name="stereo_camera_holder">
     <visual>
       <geometry>
-        <box size="0.04 0.25 0.05"/>
+        <box size="0.04 0.25 0.06"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.04 0.25 0.05"/>
+        <box size="0.04 0.25 0.06"/>
       </geometry>
     </collision>
     <inertial>
@@ -814,7 +814,7 @@
   <joint name="footprint_joint" type="fixed">
     <parent link="base_footprint"/>
     <child link="base_link"/>
-    <origin xyz="0.0 0.0 0.085" rpy="0 0 0"/>
+    <origin xyz="0.0 0.0 0.1" rpy="0 0 0"/>
   </joint>
 
   <joint name="dummy_chassis_joint" type="fixed">
@@ -823,49 +823,49 @@
   </joint>
 
   <joint name="front_bumper_center_joint" type="fixed">
-    <origin xyz="0.4483 0 0" rpy="0 0 0"/>
+    <origin xyz="0.49 0 0" rpy="0 0 0"/>
     <parent link="chassis"/>
     <child link="front_bumper_center"/>
   </joint>
 
   <joint name="front_bumper_left_joint" type="fixed">
-    <origin xyz="0.4187 0.1773 0" rpy="0 0 0.7854"/>
+    <origin xyz="0.4719 0.2376 0" rpy="0 0 0.2618"/>
     <parent link="chassis"/>
     <child link="front_bumper_left"/>
   </joint>
 
   <joint name="front_bumper_right_joint" type="fixed">
-    <origin xyz="0.4187 -0.1773 0" rpy="0 0 -0.7854"/>
+    <origin xyz="0.4719 -0.2376 0" rpy="0 0 -0.2618"/>
     <parent link="chassis"/>
     <child link="front_bumper_right"/>
   </joint>
 
   <joint name="rear_bumper_center_joint" type="fixed">
-    <origin xyz="-0.4483 0 0" rpy="0 0 0"/>
+    <origin xyz="-0.49 0 0" rpy="0 0 0"/>
     <parent link="chassis"/>
     <child link="rear_bumper_center"/>
   </joint>
 
   <joint name="rear_bumper_left_joint" type="fixed">
-    <origin xyz="-0.4187 0.1773 0" rpy="0 0 -0.7854"/>
+    <origin xyz="-0.4719 0.2376 0" rpy="0 0 -0.2618"/>
     <parent link="chassis"/>
     <child link="rear_bumper_left"/>
   </joint>
 
   <joint name="rear_bumper_right_joint" type="fixed">
-    <origin xyz="-0.4187 -0.1773 0" rpy="0 0 0.7854"/>
+    <origin xyz="-0.4719 -0.2376 0" rpy="0 0 0.2618"/>
     <parent link="chassis"/>
     <child link="rear_bumper_right"/>
   </joint>
 
   <joint name="left_side_bumper_joint" type="fixed">
-    <origin xyz="0.0 0.2069 0" rpy="0 0 0"/>
+    <origin xyz="0.0 0.295 0" rpy="0 0 0"/>
     <parent link="chassis"/>
     <child link="left_side_bumper"/>
   </joint>
 
   <joint name="right_side_bumper_joint" type="fixed">
-    <origin xyz="0.0 -0.2069 0" rpy="0 0 0"/>
+    <origin xyz="0.0 -0.295 0" rpy="0 0 0"/>
     <parent link="chassis"/>
     <child link="right_side_bumper"/>
   </joint>
@@ -907,19 +907,20 @@
   </joint>
 
   <joint name="sonar_left_side_bumper_joint" type="fixed">
-    <origin xyz="0 0.015 0" rpy="0 0 1.5707"/>
+    <origin xyz="0 0.02 0" rpy="0 0 1.5707"/>
     <parent link="left_side_bumper"/>
     <child link="sonar_left_side_bumper"/>
   </joint>
 
   <joint name="sonar_right_side_bumper_joint" type="fixed">
-    <origin xyz="0 -0.015 0" rpy="0 0 -1.5707"/>
+    <origin xyz="0 -0.02 0" rpy="0 0 -1.5707"/>
     <parent link="right_side_bumper"/>
     <child link="sonar_right_side_bumper"/>
   </joint>
 
   <joint name="front_left_wheel_steering_joint" type="revolute">
-    <origin xyz="0 0.165 0" rpy="0 0 0"/>
+    <!-- <origin xyz="0 0.26 0" rpy="0 0 0"/> -->
+    <origin xyz="0 0.22 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit effort="25" lower="-0.6" upper="0.6" velocity="1.2"/>
     <parent link="front_axle"/>
@@ -927,7 +928,8 @@
   </joint>
 
   <joint name="front_right_wheel_steering_joint" type="revolute">
-    <origin xyz="0 -0.165 0" rpy="0 0 0"/>
+    <!-- <origin xyz="0 -0.26 0" rpy="0 0 0"/> -->
+    <origin xyz="0 -0.22 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit effort="25" lower="-0.6" upper="0.6" velocity="1.2"/>
     <parent link="front_axle"/>
@@ -935,47 +937,49 @@
   </joint>
 
   <joint name="front_left_wheel_joint" type="continuous">
-    <origin xyz="0 0.02 0" rpy="-1.5707 0 0"/>
+    <!-- <origin xyz="0 0 0" rpy="-1.5707 0 0"/> -->
+    <origin xyz="0 0.04 0" rpy="-1.5707 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="front_left_wheel_steering_link"/>
     <child link="front_left_wheel"/>
   </joint>
 
   <joint name="front_right_wheel_joint" type="continuous">
-    <origin xyz="0 -0.02 0" rpy="-1.5707 0 0"/>
+    <!-- <origin xyz="0 0 0" rpy="-1.5707 0 0"/> -->
+    <origin xyz="0 -0.04 0" rpy="-1.5707 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="front_right_wheel_steering_link"/>
     <child link="front_right_wheel"/>
   </joint>
 
   <joint name="rear_left_wheel_joint" type="continuous">
-    <origin xyz="0 0.185 0" rpy="-1.5707 0 0"/>
+    <origin xyz="0 0.26 0" rpy="-1.5707 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="rear_axle"/>
     <child link="rear_left_wheel"/>
   </joint>
 
   <joint name="rear_right_wheel_joint" type="continuous">
-    <origin xyz="0 -0.185 0" rpy="-1.5707 0 0"/>
+    <origin xyz="0 -0.26 0" rpy="-1.5707 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="rear_axle"/>
     <child link="rear_right_wheel"/>
   </joint>
 
   <joint name="front_axle_joint" type="fixed">
-    <origin xyz="0.28059 0 0" rpy="0 0 0"/>
+    <origin xyz="0.3 0 0" rpy="0 0 0"/>
     <parent link="chassis"/>
     <child link="front_axle"/>
   </joint>
 
   <joint name="rear_axle_joint" type="fixed">
-    <origin xyz="-0.28059 0 0" rpy="0 0 0"/>
+    <origin xyz="-0.3 0 0" rpy="0 0 0"/>
     <parent link="chassis"/>
     <child link="rear_axle"/>
   </joint>
 
   <joint name="stereo_camera_holder_joint" type="fixed">
-    <origin xyz="0.21879 0 0.2578" rpy="0 0 0"/>
+    <origin xyz="0.3 0 0.25" rpy="0 0 0"/>
     <parent link="chassis"/>
     <child link="stereo_camera_holder"/>
   </joint>
